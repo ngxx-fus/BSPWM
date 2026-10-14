@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+# Calculate instantaneous CPU usage percentage
+cpu=$(top -bn1 2>/dev/null | awk '/Cpu\(s\)/ {printf "%2.0f", $2 + $4}')
+[ -z "$cpu" ] && cpu=" 0"
+
+# Read CPU temperature
+temp=""
+if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
+    raw=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
+    [ -n "$raw" ] && temp=$(( raw / 1000 ))
+fi
+
+if [ -z "$temp" ]; then
+    for f in /sys/class/hwmon/hwmon*/temp1_input; do
+        if [ -f "$f" ]; then
+            raw=$(cat "$f" 2>/dev/null)
+            if [ -n "$raw" ]; then
+                temp=$(( raw / 1000 ))
+                break
+            fi
+        fi
+    done
+fi
+
+[ -z "$temp" ] && temp="--"
+
+# Choose thermal ramp icon based on temperature (colored with primary blue #50a5f5)
+if [ "$temp" != "--" ] && [ "$temp" -ge 80 ]; then
+    t_icon="%{F#ebf831}%{F-}"
+elif [ "$temp" != "--" ] && [ "$temp" -ge 65 ]; then
+    t_icon="%{F#50a5f5}%{F-}"
+elif [ "$temp" != "--" ] && [ "$temp" -ge 50 ]; then
+    t_icon="%{F#50a5f5}%{F-}"
+else
+    t_icon="%{F#50a5f5}%{F-}"
+fi
+
+echo "${cpu}%  ${t_icon} ${temp}°C"
+

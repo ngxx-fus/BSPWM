@@ -1,0 +1,207 @@
+#
+# WM INDEPENDENT APPLICATION LAUNCHERS
+#
+
+# Launch terminal emulator
+super + {Return,r}
+	gnome-terminal
+
+# Launch rofi app finder / universe
+alt + space
+	rofi -show combi -combi-modes "window,drun,run" -modes combi -show-icons -display-combi "Universe" -theme /home/fus/.config/bspwm/rofi/config.rasi
+
+# Toggle input method (fcitx5)
+super + space
+	fcitx5-remote -t
+
+# Launch file manager
+super + e
+	thunar
+
+# Toggle clipboard manager (CopyQ)
+super + v
+	/usr/bin/copyq toggle
+
+# Lock screen
+super + l
+	/usr/local/bin/betterlockscreen -l blur
+
+# Toggle skippy-xd window switcher
+super + Tab
+	/usr/local/bin/skippy-xd --toggle
+
+# Cycle windows forward (alt + tab)
+alt + Tab
+	bspc node -f next.local.!hidden.window
+
+# Cycle windows backward
+alt + shift + Tab
+	bspc node -f prev.local.!hidden.window
+
+# Display profile switch script
+super + p
+	/home/fus/.config/bspwm/scripts/Helper-DisplaySwitching
+
+# Help and power scripts
+super + slash
+	/home/fus/.config/bspwm/scripts/Helper-Help
+
+super + x
+	/home/fus/.config/bspwm/scripts/Helper-Power
+
+# Reload sxhkd configuration
+super + Escape
+	pkill -USR1 -x sxhkd
+
+#
+# HARDWARE & MEDIA KEYS
+#
+
+# Volume controls via custom script
+{XF86AudioRaiseVolume,super + F12}
+	/home/fus/.config/bspwm/scripts/Helper-ChangeVolume up
+
+{XF86AudioLowerVolume,super + F11}
+	/home/fus/.config/bspwm/scripts/Helper-ChangeVolume down
+
+{XF86AudioMute,super + F10}
+	/home/fus/.config/bspwm/scripts/Helper-ChangeVolume mute
+
+# Microphone toggle and notifications
+XF86AudioMicMute
+	sh -c 'pactl set-source-mute @DEFAULT_SOURCE@ 1 ; notify-send "Microphone" "Muted"'
+
+XF86Launch5
+	sh -c 'pactl set-source-mute @DEFAULT_SOURCE@ 0 ; notify-send "Microphone" "Unmuted"'
+
+# Music playback
+XF86AudioNext
+	mpc next
+
+# Screen brightness
+XF86MonBrightnessDown
+	/home/fus/.config/bspwm/scripts/Helper-ChangeBrightness down
+
+XF86MonBrightnessUp
+	/home/fus/.config/bspwm/scripts/Helper-ChangeBrightness up
+
+# Keyboard backlight
+XF86KbdBrightnessUp
+	/home/fus/.config/bspwm/scripts/Helper-ChangeKeyboardBrightness up
+
+XF86KbdBrightnessDown
+	/home/fus/.config/bspwm/scripts/Helper-ChangeKeyboardBrightness down
+
+XF86KbdLightOnOff
+	/home/fus/.config/bspwm/scripts/Helper-ChangeKeyboardBrightness
+
+# Touchpad toggle
+XF86TouchpadToggle
+	/home/fus/.config/bspwm/scripts/Helper-ToggleTouchpad
+
+#
+# SCREENSHOT SHORTCUTS (FLAMESHOT)
+#
+
+# Fullscreen capture
+Print
+	flameshot full
+
+# Interactive selection capture
+{super + shift + s,alt + shift + s,alt + shift + w}
+	flameshot gui
+
+#
+# BSPWM SESSION & WINDOW CONTROLS
+#
+
+# Quit or restart bspwm
+super + alt + {q,r}
+	bspc {quit,wm -r}
+
+# Reconfigure bspwm (match W-A-r in bspwm)
+super + alt + r
+	bspc wm -r
+
+# Restart compositor (picom)
+super + shift + b
+	sh -c 'killall picom ; /usr/bin/picom --config /home/fus/.config/bspwm/picom/picom.conf -b'
+
+# Close focused window
+super + {q,w}
+	bspc node -c
+
+# Force kill focused window
+super + shift + w
+	bspc node -k
+
+# Toggle fullscreen
+super + f
+	bspc node -t \~fullscreen
+
+# Toggle floating state
+super + s
+	bspc node -t \~floating
+
+# Alternate between tiled and monocle layout
+super + m
+	bspc desktop -l next
+
+# Focus directional node
+super + {Left,Down,Up,Right}
+	bspc node -f {west,south,north,east}
+
+super + {h,j,k,l}
+	bspc node -f {west,south,north,east}
+
+# Swap node with directional neighbor
+super + shift + {Left,Down,Up,Right}
+	bspc node -s {west,south,north,east}
+
+super + shift + {h,j,k,l}
+	bspc node -s {west,south,north,east}
+
+# Move / Float node by coordinates
+super + ctrl + {Left,Down,Up,Right}
+	bspc node -v {-20 0,0 20,0 -20,20 0}
+
+# Send node to directional monitor
+super + ctrl + shift + {Left,Down,Up,Right}
+	bspc node -m {west,south,north,east} --follow
+
+# Expand node size
+super + alt + {h,j,k,l}
+	bspc node -z {left -20 0,bottom 0 20,top 0 -20,right 20 0}
+
+super + alt + {Left,Down,Up,Right}
+	bspc node -z {left -20 0,bottom 0 20,top 0 -20,right 20 0}
+
+# Contract node size
+super + alt + shift + {h,j,k,l}
+	bspc node -z {right -20 0,top 0 20,bottom 0 -20,left 20 0}
+
+super + alt + shift + {Left,Down,Up,Right}
+	bspc node -z {right -20 0,top 0 20,bottom 0 -20,left 20 0}
+
+#
+# DESKTOP SWITCHING (PER-MONITOR WORKSPACES)
+#
+
+# Focus desktop 1 to 9 on the currently focused monitor
+super + {1-9}
+	bspc desktop focused:'^{1-9}' -f
+
+# Send active window to desktop 1 to 9 on the currently focused monitor
+super + shift + {1-9}
+	bspc node -d focused:'^{1-9}' --follow
+
+# Focus next/previous monitor
+super + {comma,period}
+	bspc monitor -f {prev,next}
+
+# Navigate desktop left / right
+ctrl + alt + Left
+	bspc desktop -f prev.local
+
+ctrl + alt + Right
+	bspc desktop -f next.local

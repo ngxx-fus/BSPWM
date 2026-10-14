@@ -1,0 +1,52 @@
+# Display configuration for Helper-DisplaySwitching
+DISP/MODE=2                   # Active mode (0: PC screen only, 1: Duplicate, 2: Extend, 3: Second screen only)
+DISP/PROFILE=1                # Active Extend profile index (0, 1, 2, ...)
+
+# Display infomations
+DISP/NUM=4                    # Number of listed displays
+
+DISP/0/Label="eDP-1"          # Built-in display
+DISP/0/Width=1920
+DISP/0/Height=1200
+DISP/0/Refresh=60
+DISP/0/Primary=4
+
+DISP/1/Label="DP-1"           # Leave this blank if not used/undetected/unknown
+DISP/1/Width=
+DISP/1/Height=
+DISP/1/Refresh=
+DISP/1/Primary=3
+
+DISP/2/Label="DP-2"           # Leave this blank if not used/undetected/unknown
+DISP/2/Width=1920
+DISP/2/Height=1080
+DISP/2/Refresh=60
+DISP/2/Primary=2
+
+DISP/3/Label="HDMI-1"         # Leave this blank if not used/undetected/unknown
+DISP/3/Width=1920
+DISP/3/Height=1080
+DISP/3/Refresh=60
+DISP/3/Primary=1
+
+# Profile infomations 
+
+PROFILE/0/DISP/NUM=2          # Profile 0: For two monitors; HDMI-1/wxh/0x0; eDP-1/wxh/0x1920
+PROFILE/0/DISP/0/PosX=0       # Leave this blank if not used/undetected
+PROFILE/0/DISP/0/PosY=1920    # Leave this blank if not used/undetected
+PROFILE/0/DISP/3/PosX=0       # Leave this blank if not used/undetected
+PROFILE/0/DISP/3/PosY=0       # Leave this blank if not used/undetected
+
+PROFILE/1/DISP/NUM=2          # Profile 1: For two monitors; HDMI-1/wxh/0x0; DP-2/wxh/1080x0
+PROFILE/1/DISP/2/PosX=1080    # Leave this blank if not used/undetected
+PROFILE/1/DISP/2/PosY=0       # Leave this blank if not used/undetected
+PROFILE/1/DISP/3/PosX=0       # Leave this blank if not used/undetected
+PROFILE/1/DISP/3/PosY=0       # Leave this blank if not used/undetected
+
+PROFILE/2/DISP/NUM=3          # Profile 2: For three monitors; HDMI-1/wxh/0x0; DP-2/wxh/1080x0; eDP-1/wxh/0x1920
+PROFILE/2/DISP/0/PosX=0       # Leave this blank if not used/undetected
+PROFILE/2/DISP/0/PosY=1920    # Leave this blank if not used/undetected
+PROFILE/2/DISP/2/PosX=1080    # Leave this blank if not used/undetected
+PROFILE/2/DISP/2/PosY=0       # Leave this blank if not used/undetected
+PROFILE/2/DISP/3/PosX=0       # Leave this blank if not used/undetected
+PROFILE/2/DISP/3/PosY=0       # Leave this blank if not used/undetected

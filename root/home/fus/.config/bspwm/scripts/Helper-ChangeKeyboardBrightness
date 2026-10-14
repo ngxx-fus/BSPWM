@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# change_keyboard_brightlight - keyboard backlight control with Dunst progress bar
+# Usage: change_keyboard_brightlight {up|down}
+
+DEVICE=$(brightnessctl --list | grep -m1 "kbd_backlight" | awk -F"'" '{print $2}')
+[ -z "$DEVICE" ] && DEVICE="*::kbd_backlight"
+
+STEP=1
+
+notify_kbd() {
+    local percent
+    percent=$(brightnessctl -d "$DEVICE" info | awk -F'[()]' '/Current brightness/ {gsub("%","",$2); print $2}')
+    
+    notify-send -a "kbd_brightness" -u low \
+        -h string:x-canonical-private-synchronous:kbd_brightness \
+        -h "int:value:$percent" \
+        -i "keyboard-brightness-symbolic" \
+        -t 2000 \
+        "Keyboard Light ${percent}%"
+}
+
+case "$1" in
+    up)
+        brightnessctl -d "$DEVICE" set "+$STEP" >/dev/null 2>&1
+        notify_kbd
+        ;;
+    down)
+        brightnessctl -d "$DEVICE" set "${STEP}-" >/dev/null 2>&1
+        notify_kbd
+        ;;
+    *)
+        echo "Usage: $0 {up|down}" >&2
+        exit 1
+        ;;
+esac

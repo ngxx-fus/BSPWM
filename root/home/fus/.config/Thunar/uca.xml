@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<actions>
+<action>
+	<icon>utilities-terminal</icon>
+	<name>Open Terminal Here</name>
+	<submenu></submenu>
+	<unique-id>1790860072533174617-1</unique-id>
+	<command>gnome-terminal --working-directory=%f</command>
+	<description>Open kitty in this folder</description>
+	<range></range>
+	<patterns>*</patterns>
+	<startup-notify/>
+	<directories/>
+</action>
+<action>
+	<icon>application-image-bmp</icon>
+	<name>Paste Clipboard Image</name>
+	<submenu></submenu>
+	<unique-id>1791036304530520-1</unique-id>
+	<command>sh -c &apos;DIR=&quot;$1&quot;; [ -d &quot;$DIR&quot; ] || DIR=&quot;$(dirname &quot;$DIR&quot;)&quot;; TIMESTAMP=$(date +%%Y%%m%%d_%%H%%M%%S); TARGETS=$(xclip -selection clipboard -t TARGETS -o 2&gt;/dev/null); if echo &quot;$TARGETS&quot; | grep -q &quot;image/png&quot;; then xclip -selection clipboard -t image/png -o &gt; &quot;$DIR/screenshot_${TIMESTAMP}.png&quot; &amp;&amp; notify-send &quot;Thunar&quot; &quot;Pasted screenshot_${TIMESTAMP}.png&quot;; else notify-send -u critical &quot;Thunar&quot; &quot;No image found in clipboard!&quot;; fi&apos; _ %f</command>
+	<description>Save image from clipboard into current folder</description>
+	<range>*</range>
+	<patterns>*</patterns>
+	<directories/>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>draw-star</icon>
+	<name>Copy Absolute Path</name>
+	<submenu></submenu>
+	<unique-id>1791037290181236-1</unique-id>
+	<command>copyq add &quot;%F&quot; &amp;&amp; copyq select 0 &amp;&amp; notify-send &quot;Thunar&quot; &quot;Copied to CopyQ: %F&quot;</command>
+	<description>Copy absolute path of selected files/folders to clipboard</description>
+	<range>*</range>
+	<patterns>*</patterns>
+	<directories/>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+</actions>

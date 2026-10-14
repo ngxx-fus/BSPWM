@@ -1,0 +1,114 @@
+#!/bin/bash
+
+# Simple script to handle a DIY shutdown menu with rofi.
+#
+# Requirements:
+# - rofi
+# - systemd (can be replaced for other init systems if needed)
+# - libnotify (notify-send)
+# - bspwm (bspc)
+# - dunst (dunstctl)
+#
+# Instructions:
+# - Save this file as power.sh
+# - Make it executable: chmod +x /path/to/power.sh
+# - Run it
+
+# Check and fall back to popup theme if controlpanel theme does not exist
+ROFI_THEME="$HOME/.config/bspwm/rofi/controlpanel.rasi"
+if [ ! -f "$ROFI_THEME" ]; then
+    ROFI_THEME="$HOME/.config/bspwm/rofi/popup.rasi"
+fi
+
+# Define visual action entries using Nerd Font icons
+cancel="󰜺  Cancel"
+show_noti="󰂞  Show All Noti"
+clear_noti="󰂚  Clear All Noti"
+mode_power="󰾆  Power Save"
+mode_perf="󰓅  Performance"
+sys_lock="󰌾  Lock"
+sys_suspend="󰒲  Suspend"
+sys_logout="󰍃  Logout"
+sys_reboot="󰜉  Reboot"
+sys_shutdown="󰐥  Shutdown"
+
+chosen=$(printf '%s\n' \
+    "$cancel" \
+    "$show_noti" \
+    "$clear_noti" \
+    "$mode_power" \
+    "$mode_perf" \
+    "$sys_lock" \
+    "$sys_suspend" \
+    "$sys_logout" \
+    "$sys_reboot" \
+    "$sys_shutdown" | \
+    rofi -dmenu -i -p "Quick Menu" -theme "$ROFI_THEME")
+
+# Match user selection and execute corresponding action
+case "$chosen" in
+    "$show_noti")
+        # Pop back all logged notifications from Dunst history buffer
+        dunstctl history-pop
+        ;;
+    "$clear_noti")
+        # Close all active and displayed notification popups
+        dunstctl close-all
+        ;;
+    "$mode_perf")
+        # Apply performance profile via power-profiles-daemon
+        powerprofilesctl set performance
+
+        # Verify through active profile
+        if [ "$(powerprofilesctl get)" = "performance" ]; then
+            notify-send -u low -i preferences-system-power "Power Management" "Profile: Performance"
+        else
+            notify-send -u critical -i dialog-error "Power Management" "Failed to set Performance"
+        fi
+        ;;
+
+    "$mode_power")
+        # Apply power-saver profile via power-profiles-daemon
+        powerprofilesctl set power-saver
+
+        # Verify through active profile
+        if [ "$(powerprofilesctl get)" = "power-saver" ]; then
+            notify-send -u low -i preferences-system-power "Power Management" "Profile: Power-saver"
+        else
+            notify-send -u critical -i dialog-error "Power Management" "Failed to set Power-saver"
+        fi
+        ;;
+    "$sys_lock")
+        notify-send -u low -i system-lock-screen "System" "Locking screen..."
+        betterlockscreen -l blur
+        ;;
+    "$sys_suspend")
+        notify-send -u normal -i system-suspend "System" "Locking & suspending..."
+        sleep 0.5
+        # Lock screen first, then suspend system
+        betterlockscreen -l blur &
+        sleep 1
+        systemctl suspend
+        ;;
+    "$sys_logout")
+        notify-send -u normal -i system-log-out "Session" "Exiting bspwm session..."
+        sleep 0.5
+        # Exit bspwm session via client controller
+        bspc quit
+        ;;
+    "$sys_reboot")
+        notify-send -u critical -i system-reboot "System" "Rebooting machine..."
+        sleep 0.5
+        systemctl reboot
+        ;;
+    "$sys_shutdown")
+        notify-send -u critical -i system-shutdown "System" "Powering off machine..."
+        sleep 0.5
+        systemctl poweroff
+        ;;
+    *)
+        # Exit on cancel or unmatched input
+        exit 0
+        ;;
+esac
+

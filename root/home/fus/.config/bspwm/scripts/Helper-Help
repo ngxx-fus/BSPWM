@@ -1,0 +1,137 @@
+#!/bin/bash
+
+SXHKDRC="$HOME/.config/bspwm/sxhkd/sxhkdrc"
+THEME_FILE="$HOME/.config/bspwm/rofi/keybinds.rasi"
+
+rows=$(python3 - "$SXHKDRC" <<'PY'
+import sys, os, html, re
+
+sxhkd_path = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/.config/bspwm/sxhkd/sxhkdrc")
+
+ACCENT = "#ff8f40"
+KEY_COLOR = "#78a9ff"
+CMD_COLOR = "#8b949e"
+
+if not os.path.isfile(sxhkd_path):
+    print(f'<span foreground="#f25d78">Config not found: {html.escape(sxhkd_path)}</span>')
+    sys.exit(0)
+
+with open(sxhkd_path, encoding="utf-8") as f:
+    raw_lines = [line.rstrip("\r\n") for line in f]
+
+def esc(s):
+    return html.escape(s, quote=False)
+
+def format_key(k):
+    # Capitalize standard modifiers for readability while preserving keysyms
+    replacements = {
+        r'\bsuper\b': 'Super',
+        r'\bshift\b': 'Shift',
+        r'\bctrl\b': 'Ctrl',
+        r'\balt\b': 'Alt',
+        r'\bspace\b': 'Space',
+    }
+    for pattern, repl in replacements.items():
+        k = re.sub(pattern, repl, k)
+    return k
+
+sections = {}
+order = []
+current_section = "GENERAL KEYBINDINGS"
+sections[current_section] = []
+order.append(current_section)
+
+last_comment = ""
+pending_key = None
+pending_cmd_lines = []
+
+def flush_binding():
+    global pending_key, pending_cmd_lines
+    if pending_key and pending_cmd_lines:
+        cmd = " ".join(c.strip() for c in pending_cmd_lines if c.strip())
+        # Clean up long paths in commands for display
+        short_cmd = cmd.replace("/home/fus/.config/bspwm/", "~/.config/bspwm/")
+        short_cmd = short_cmd.replace("$HOME/.config/bspwm/", "~/.config/bspwm/")
+        label = last_comment if last_comment else short_cmd
+        sections[current_section].append((format_key(pending_key), label, short_cmd))
+    pending_key = None
+    pending_cmd_lines = []
+
+i = 0
+n = len(raw_lines)
+while i < n:
+    line = raw_lines[i]
+    stripped = line.strip()
+
+    # Detect 3-line section header:
+    # #
+    # # SECTION TITLE
+    # #
+    if (
+        stripped == "#"
+        and i + 2 < n
+        and raw_lines[i + 1].strip().startswith("# ")
+        and raw_lines[i + 2].strip() == "#"
+    ):
+        flush_binding()
+        sec_title = raw_lines[i + 1].strip()[2:].strip()
+        if sec_title:
+            current_section = sec_title.upper()
+            if current_section not in sections:
+                sections[current_section] = []
+                order.append(current_section)
+        last_comment = ""
+        i += 3
+        continue
+
+    # Blank line
+    if not stripped:
+        flush_binding()
+        i += 1
+        continue
+
+    # Comment line (description)
+    if stripped.startswith("#"):
+        flush_binding()
+        comment_text = stripped.lstrip("#").strip()
+        if comment_text:
+            last_comment = comment_text
+        i += 1
+        continue
+
+    # Indented line -> command for current keybinding
+    if line[0].isspace():
+        if pending_key is not None:
+            pending_cmd_lines.append(stripped.rstrip("\\").strip())
+        i += 1
+        continue
+
+    # Non-indented, non-comment line -> keybinding definition
+    flush_binding()
+    key_line = stripped
+    while key_line.endswith("\\") and i + 1 < n:
+        i += 1
+        key_line = key_line[:-1].rstrip() + " " + raw_lines[i].strip()
+    pending_key = key_line
+    i += 1
+
+flush_binding()
+
+for section in order:
+    entries = sections[section]
+    if not entries:
+        continue
+    print(f'<span size="large" weight="bold" foreground="{ACCENT}">── {esc(section)} ──</span>')
+    for k, desc, cmd in entries:
+        k_padded = f"{k:<36}"
+        desc_padded = f"{desc:<44}"
+        print(
+            f'<span foreground="{KEY_COLOR}">{esc(k_padded)}</span>  '
+            f'{esc(desc_padded)}  '
+            f'<span foreground="{CMD_COLOR}">({esc(cmd)})</span>'
+        )
+PY
+)
+
+echo "$rows" | rofi -dmenu -markup-rows -i -p "bspwm Keybindings" \
+    -line-padding 4 -hide-scrollbar -theme "$THEME_FILE"

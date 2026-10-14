@@ -1,0 +1,407 @@
+#!/bin/sh
+
+# wallpaper-theme — apply a wallpaper plus a palette generated from it.
+# Called by the quickshell wallpaper picker, which does the color extraction
+# (Canvas histogram) and passes the derived palette in. Rewrites the same
+# files the retired thememenu used to own.
+#
+# usage: wallpaper-theme <image> <bg> <altbg> <fg> <border> <primary> <secondary> <alert> <disabled> <ansi0..15>
+
+set -u
+
+[ $# -eq 25 ] || { echo "usage: wallpaper-theme <image> <8 semantic colors> <16 ansi colors>" >&2; exit 1; }
+
+CONFIG_DIR="$(dirname "$(dirname "$(readlink -f "$0")")")"
+IMG="$1" BG="$2" ALTBG="$3" FG="$4" BORDER="$5"
+PRIMARY="$6" SECONDARY="$7" ALERT="$8" DISABLED="$9"
+shift 9  # $1..$16 are now the ANSI terminal colors
+
+[ -f "$IMG" ] || { echo "no such wallpaper: $IMG" >&2; exit 1; }
+
+# Serialize concurrent runs — the last pick wins whole. Spawned daemons
+# must not inherit fd 9 (the 9>&- below) or the lock outlives the script;
+# the bounded wait turns a leaked lock into a delay, not a deadlock.
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/wallpaper-theme.lock"
+flock -w 60 9 || echo "wallpaper-theme: lock timeout, proceeding unlocked" >&2
+
+# 1. Polybar/quickshell palette — Theme.qml watches this file and re-colors
+#    the bar live the moment it lands.
+cat > "$CONFIG_DIR/polybar/colors.ini" <<EOF
+[colors]
+background = $BG
+background-alt = $ALTBG
+foreground = $FG
+primary = $PRIMARY
+secondary = $SECONDARY
+alert = $ALERT
+disabled = $DISABLED
+border = $BORDER
+EOF
+
+# 2. bspwm theme — a flat themerc generated from the palette; bspwm
+#    re-reads it on --reconfigure, so titlebars follow the wallpaper.
+OB_THEME="$HOME/.themes/Wallpaper-bspwm/bspwm-3"
+mkdir -p "$OB_THEME"
+cat > "$OB_THEME/themerc" <<EOF
+# Generated from wallpaper: $(basename "$IMG")
+# Design language: Simply-Circles (hairline border, centered title, ring buttons)
+
+border.width: 1
+padding.width: 6
+padding.height: 4
+window.handle.width: 2
+window.label.text.justify: center
+menu.title.text.justify: center
+
+window.active.border.color: $PRIMARY
+window.inactive.border.color: $BORDER
+
+window.active.title.bg: flat solid
+window.active.title.bg.color: $ALTBG
+window.active.label.bg: parentrelative
+window.active.label.text.color: $FG
+window.active.button.unpressed.image.color: $PRIMARY
+window.active.button.pressed.image.color: $FG
+window.active.button.hover.image.color: $FG
+
+window.inactive.title.bg: flat solid
+window.inactive.title.bg.color: $BG
+window.inactive.label.bg: parentrelative
+window.inactive.label.text.color: $DISABLED
+window.inactive.button.unpressed.image.color: $DISABLED
+
+# client frame — unset, bspwm paints this WHITE; blend it away
+window.client.padding.width: 0
+window.client.padding.height: 0
+window.active.client.color: $BG
+window.inactive.client.color: $BG
+
+window.handle.bg: flat solid
+window.handle.bg.color: $BG
+window.active.grip.bg: flat solid
+window.active.grip.bg.color: $ALTBG
+window.inactive.grip.bg: flat solid
+window.inactive.grip.bg.color: $BG
+
+menu.border.color: $PRIMARY
+menu.border.width: 1
+menu.title.bg: flat solid
+menu.title.bg.color: $ALTBG
+menu.title.text.color: $PRIMARY
+menu.items.bg: flat solid
+menu.items.bg.color: $BG
+menu.items.text.color: $FG
+menu.items.disabled.text.color: $DISABLED
+menu.items.active.bg: flat solid
+menu.items.active.bg.color: $PRIMARY
+menu.items.active.text.color: $BG
+
+osd.bg: flat solid
+osd.bg.color: $BG
+osd.label.text.color: $FG
+osd.border.color: $PRIMARY
+osd.hilight.bg: flat solid
+osd.hilight.bg.color: $PRIMARY
+osd.unhilight.bg: flat solid
+osd.unhilight.bg.color: $ALTBG
+EOF
+
+# button bitmaps — Simply-Circles set: ring for max/shade, X close, slim
+# iconify bar, four-dot desk; colored by the *.image.color keys above
+cat > "$OB_THEME/max.xbm" <<'EOF'
+#define max_width 10
+#define max_height 10
+static unsigned char max_bits[] = {
+ 0xFF, 0x03, 0x01, 0x02, 0x01, 0x02, 0x01, 0x02, 0x01, 0x02, 0x01, 0x02,
+ 0x01, 0x02, 0x01, 0x02, 0x01, 0x02, 0xFF, 0x03 };
+EOF
+cat > "$OB_THEME/max_toggled.xbm" <<'EOF'
+#define max_toggled_width 10
+#define max_toggled_height 10
+static unsigned char max_toggled_bits[] = {
+ 0x00, 0x00, 0x00, 0x00, 0xFC, 0x00, 0x84, 0x00, 0x84, 0x00, 0x84, 0x00,
+ 0x84, 0x00, 0xFC, 0x00, 0x00, 0x00, 0x00, 0x00 };
+EOF
+cat > "$OB_THEME/shade.xbm" <<'EOF'
+#define shade_width 10
+#define shade_height 10
+static unsigned char shade_bits[] = {
+ 0x30, 0x00, 0x48, 0x00, 0x84, 0x00, 0x02, 0x01, 0x01, 0x02, 0x00, 0x00,
+ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+EOF
+cat > "$OB_THEME/shade_toggled.xbm" <<'EOF'
+#define shade_toggled_width 10
+#define shade_toggled_height 10
+static unsigned char shade_toggled_bits[] = {
+ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02,
+ 0x02, 0x01, 0x84, 0x00, 0x48, 0x00, 0x30, 0x00 };
+EOF
+cat > "$OB_THEME/desk.xbm" <<'EOF'
+#define desk_width 10
+#define desk_height 10
+static unsigned char desk_bits[] = {
+ 0x00, 0x00, 0x00, 0x00, 0xCC, 0x00, 0xCC, 0x00, 0x00, 0x00, 0x00, 0x00,
+ 0xCC, 0x00, 0xCC, 0x00, 0x00, 0x00, 0x00, 0x00 };
+EOF
+cat > "$OB_THEME/desk_toggled.xbm" <<'EOF'
+#define desk_toggled_width 8
+#define desk_toggled_height 8
+static unsigned char desk_toggled_bits[] = {
+ 0x00, 0x7E, 0x7E, 0x7E, 0x7E, 0x7E, 0x7E, 0x00 };
+EOF
+cat > "$OB_THEME/close.xbm" <<'EOF'
+#define close_width 10
+#define close_height 10
+static unsigned char close_bits[] = {
+ 0x01, 0x02, 0x02, 0x01, 0x84, 0x00, 0x48, 0x00, 0x30, 0x00, 0x30, 0x00,
+ 0x48, 0x00, 0x84, 0x00, 0x02, 0x01, 0x01, 0x02 };
+EOF
+cat > "$OB_THEME/iconify.xbm" <<'EOF'
+#define iconify_width 10
+#define iconify_height 10
+static unsigned char iconify_bits[] = {
+ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+ 0x00, 0x00, 0xFF, 0x03, 0xFF, 0x03, 0x00, 0x00 };
+EOF
+
+# point rc.xml at the generated theme (theme <name> is the file's first)
+sed -i "0,/<name>[^<]*<\/name>/s//<name>Wallpaper-bspwm<\/name>/" "$CONFIG_DIR/rc.xml"
+
+# 3. Rofi.
+cat > "$CONFIG_DIR/rofi/colors.rasi" <<EOF
+/* Generated from wallpaper: $(basename "$IMG") */
+
+* {
+    bg:          $BG;
+    fg:          $FG;
+    accent:      $PRIMARY;
+    accent-2:    $SECONDARY;
+    border:      $PRIMARY;
+    urgent:      $ALERT;
+    selected-fg: $FG;
+    entry-fg:    $SECONDARY;
+    prompt-fg:   $PRIMARY;
+    header:      $SECONDARY;
+
+    background-color: @bg;
+}
+EOF
+
+# 4. Dunst — replace the quoted hex on each `# THEME: dunst_<key>` marker line.
+DUNSTRC="$CONFIG_DIR/dunst/dunstrc"
+set_dunst() { sed -i "/# THEME: dunst_$1\$/s/\"#[0-9a-fA-F]*\"/\"$2\"/" "$DUNSTRC"; }
+set_dunst frame_global       "$PRIMARY"
+set_dunst bg_low             "$BG"
+set_dunst fg_low             "$DISABLED"
+set_dunst frame_low          "$PRIMARY"
+set_dunst highlight_low      "$SECONDARY"
+set_dunst bg_normal          "$BG"
+set_dunst fg_normal          "$FG"
+set_dunst frame_normal       "$PRIMARY"
+set_dunst highlight_normal   "$PRIMARY"
+set_dunst bg_critical        "$BG"
+set_dunst fg_critical        "$FG"
+set_dunst frame_critical     "$ALERT"
+set_dunst highlight_critical "$ALERT"
+
+# 5. Kitty — session-local config dir (KITTY_CONFIG_DIRECTORY); SIGUSR1
+#    reloads running instances. ~/.config/kitty is left alone.
+if mkdir -p "$CONFIG_DIR/kitty"; then
+    cat > "$CONFIG_DIR/kitty/current-theme.conf" <<EOF
+# vim:ft=kitty
+## name: Wallpaper — $(basename "$IMG")
+## generated by wallpaper-theme
+
+# Basic colors
+foreground           $FG
+background           $BG
+selection_foreground $FG
+selection_background $ALTBG
+
+# Cursor colors
+cursor            $FG
+cursor_text_color $BG
+
+# URL underline color when hovering with mouse
+url_color $SECONDARY
+
+# Window border colors and terminal bell colors
+active_border_color   $PRIMARY
+inactive_border_color $DISABLED
+bell_border_color     $ALERT
+visual_bell_color     none
+
+# Tab bar colors
+active_tab_foreground   $BG
+active_tab_background   $PRIMARY
+inactive_tab_foreground $FG
+inactive_tab_background $ALTBG
+tab_bar_background      $BG
+tab_bar_margin_color    none
+
+# Mark colors (marked text in the terminal)
+mark1_foreground $BG
+mark1_background $PRIMARY
+mark2_foreground $BG
+mark2_background $ALERT
+mark3_foreground $BG
+mark3_background $SECONDARY
+
+# The basic 16 colors
+color0  $1
+color1  $2
+color2  $3
+color3  $4
+color4  $5
+color5  $6
+color6  $7
+color7  $8
+color8  $9
+color9  ${10}
+color10 ${11}
+color11 ${12}
+color12 ${13}
+color13 ${14}
+color14 ${15}
+color15 ${16}
+EOF
+    pkill -USR1 -x kitty 2>/dev/null || true
+fi
+
+# 5b. Neovim — palette file for butter-nvim's `wallpaper` colorscheme.
+#     New instances pick it up; running ones re-read when focus returns.
+if mkdir -p "$HOME/.cache/wallpaper-theme"; then
+    cat > "$HOME/.cache/wallpaper-theme/nvim-palette.lua" <<EOF
+-- generated by wallpaper-theme ($(basename "$IMG"))
+return {
+    bg = "$BG", altbg = "$ALTBG", fg = "$FG", border = "$BORDER",
+    primary = "$PRIMARY", secondary = "$SECONDARY",
+    alert = "$ALERT", disabled = "$DISABLED",
+    ansi = { "$1", "$2", "$3", "$4", "$5", "$6", "$7", "$8",
+             "$9", "${10}", "${11}", "${12}", "${13}", "${14}", "${15}", "${16}" },
+}
+EOF
+fi
+
+# 6. Wallpaper now + persisted into autostart so it survives logins. The
+#    dunst symlink follows the active session's config.
+feh --bg-fill "$IMG"
+sed -i "s|feh --bg-fill.*|feh --bg-fill $CONFIG_DIR/wallpaper/$(basename "$IMG") \&|" "$CONFIG_DIR/autostart"
+mkdir -p "$HOME/.cache/bspwm" "$HOME/.config/dunst"
+echo "$IMG" > "$HOME/.cache/bspwm/current_wallpaper"
+ln -sfn "$CONFIG_DIR/dunst/dunstrc" "$HOME/.config/dunst/dunstrc"
+
+# 7. GTK — wpgtk-style recolor: copy Orchis-Dark-Nord and substitute its
+#    (fixed, known) palette with ours. Text in Orchis-dark is white-alpha,
+#    so only accents/surfaces need mapping. Two alternating theme names so
+#    xsettingsd always sees a name change and live-restyles GTK3 apps.
+GTK_SRC="$HOME/.themes/Orchis-Dark-Nord"
+GTK3_CONF="$HOME/.config/gtk-3.0/settings.ini"
+# The substitutions below target the plain-Nord build's exact hexes. A missing
+# template (theme installer failed, or a config-only install) or the black-tweak
+# build of the same name (qtile's install_theme.sh) would leave GTK silently
+# unthemed - say so on screen instead.
+gtk_template_ok() {
+    if [ ! -d "$GTK_SRC" ]; then
+        notify-send -a "Wallpaper" -u critical "GTK not themed" \
+            "Orchis-Dark-Nord is missing. Rerun the theme installer:\ntheming/install_wallpaper_theme.sh"
+        return 1
+    fi
+    if ! grep -qi '#242932' "$GTK_SRC/gtk-3.0/gtk.css" 2>/dev/null; then
+        notify-send -a "Wallpaper" -u critical "GTK not themed" \
+            "Orchis-Dark-Nord is the black-tweak build. Rerun the theme installer:\ntheming/install_wallpaper_theme.sh"
+        return 1
+    fi
+}
+if gtk_template_ok; then
+    rgb() { h=${1#\#}; printf '%d, %d, %d' \
+        "0x$(printf %s "$h" | cut -c1-2)" \
+        "0x$(printf %s "$h" | cut -c3-4)" \
+        "0x$(printf %s "$h" | cut -c5-6)"; }
+
+    cur=$(sed -n 's/^gtk-theme-name=//p' "$GTK3_CONF" 2>/dev/null)
+    [ "$cur" = "Orchis-Wallpaper" ] && NEW="Orchis-Wallpaper-B" || NEW="Orchis-Wallpaper"
+    DST="$HOME/.themes/$NEW"
+    rm -rf "$DST"
+    cp -r "$GTK_SRC" "$DST"
+    sed -i "s/^Name=.*/Name=$NEW/" "$DST/index.theme"
+
+    # ANSI greens/yellows/magentas ($3/$4/$6 after the shift) keep Orchis's
+    # semantic colors wallpaper-tinted instead of collapsing onto primary.
+    find "$DST/gtk-3.0" "$DST/gtk-4.0" \( -name '*.css' -o -name '*.svg' \) \
+        -exec sed -i \
+        -e "s/#89a3c2/$PRIMARY/gI"  -e "s/rgba(137, 163, 194/rgba($(rgb "$PRIMARY")/g" \
+        -e "s/#242932/$BG/gI"       -e "s/rgba(28, 31, 38/rgba($(rgb "$BG")/g" \
+        -e "s/#1c1f26/$BG/gI"       -e "s/rgba(22, 24, 29/rgba($(rgb "$BG")/g" \
+        -e "s/#1e222a/$BG/gI" \
+        -e "s/#333a47/$ALTBG/gI" \
+        -e "s/#363c49/$BORDER/gI" \
+        -e "s/#d4878f/$ALERT/gI"    -e "s/rgba(212, 135, 143/rgba($(rgb "$ALERT")/g" \
+        -e "s/#8bd9b4/$3/gI" \
+        -e "s/#eac985/$4/gI" \
+        -e "s/#c89dbf/$6/gI" \
+        {} +
+
+    sed -i "s/^gtk-theme-name=.*/gtk-theme-name=$NEW/" "$GTK3_CONF"
+
+    # Icons — pick the installed Colloid variant nearest the palette's
+    # primary hue (selection, not recoloring: the variants ARE the hue
+    # families). Grey for washed-out palettes. Skipped if not installed.
+    R=$(printf '%d' "0x$(printf %s "${PRIMARY#\#}" | cut -c1-2)")
+    G=$(printf '%d' "0x$(printf %s "${PRIMARY#\#}" | cut -c3-4)")
+    B=$(printf '%d' "0x$(printf %s "${PRIMARY#\#}" | cut -c5-6)")
+    set -- $(awk -v r="$R" -v g="$G" -v b="$B" 'BEGIN{
+        mx=r; if(g>mx)mx=g; if(b>mx)mx=b
+        mn=r; if(g<mn)mn=g; if(b<mn)mn=b
+        d=mx-mn
+        if(d==0 || mx==0){print "0 0"; exit}
+        if(mx==r) h=(g-b)/d; else if(mx==g) h=2+(b-r)/d; else h=4+(r-g)/d
+        h*=60; if(h<0)h+=360
+        printf "%d %d", h, (d/mx)*100}')
+    HUE=$1; SAT=$2
+    if   [ "$SAT" -lt 15 ]; then ICONS="Colloid-Grey-Dracula-Dark"
+    elif [ "$HUE" -lt 35 ] || [ "$HUE" -ge 340 ]; then ICONS="Colloid-Orange-Dark"
+    elif [ "$HUE" -lt 95 ];  then ICONS="Colloid-Gruvbox-Dark"
+    elif [ "$HUE" -lt 165 ]; then ICONS="Colloid-Everforest-Dark"
+    elif [ "$HUE" -lt 215 ]; then ICONS="Colloid-Nord-Dark"
+    elif [ "$HUE" -lt 265 ]; then ICONS="Colloid-Dark"
+    elif [ "$HUE" -lt 325 ]; then ICONS="Colloid-Dracula-Dark"
+    else ICONS="Colloid-Catppuccin-Dark"; fi
+    if [ -d "$HOME/.local/share/icons/$ICONS" ] || [ -d "/usr/share/icons/$ICONS" ]; then
+        sed -i "s/^gtk-icon-theme-name=.*/gtk-icon-theme-name=$ICONS/" "$GTK3_CONF"
+        [ -f "$HOME/.xsettingsd" ] && \
+            sed -i "s|^Net/IconThemeName .*|Net/IconThemeName \"$ICONS\"|" "$HOME/.xsettingsd"
+    fi
+
+    if [ -f "$HOME/.xsettingsd" ]; then
+        sed -i "s|^Net/ThemeName .*|Net/ThemeName \"$NEW\"|" "$HOME/.xsettingsd"
+        killall xsettingsd 2>/dev/null || true
+        xsettingsd >/dev/null 2>&1 9>&- &
+    fi
+
+    # Portal-using apps (GTK4/libadwaita, flatpaks) ask the settings portal,
+    # which reads gsettings rather than xsettingsd — keep it in step so they
+    # restyle too. Native X11 GTK3 keeps following xsettingsd as before.
+    if command -v gsettings >/dev/null 2>&1; then
+        gsettings set org.gnome.desktop.interface gtk-theme "$NEW" 2>/dev/null || true
+        if [ -d "$HOME/.local/share/icons/$ICONS" ] || [ -d "/usr/share/icons/$ICONS" ]; then
+            gsettings set org.gnome.desktop.interface icon-theme "$ICONS" 2>/dev/null || true
+        fi
+        gsettings set org.gnome.desktop.interface color-scheme prefer-dark 2>/dev/null || true
+    fi
+
+    # GTK4/libadwaita reads ~/.config/gtk-4.0 directly (new apps pick it up)
+    mkdir -p "$HOME/.config/gtk-4.0"
+    for f in assets gtk.css gtk-dark.css; do
+        ln -sfn "$DST/gtk-4.0/$f" "$HOME/.config/gtk-4.0/$f"
+    done
+fi
+
+# 8. Reload — bspwm re-reads rc.xml + the generated themerc; dunst gets
+#    respawned with the new colors. quickshell re-themes via colors.ini.
+bspwm --reconfigure 2>/dev/null || true
+pkill -x dunst 2>/dev/null || true
+(sleep 0.2; dunst -config "$CONFIG_DIR/dunst/dunstrc" >/dev/null 2>&1) &
+
+sleep 0.5
+notify-send -a "Wallpaper" -t 2500 "Wallpaper theme" "Palette from $(basename "$IMG")"

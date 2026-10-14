@@ -1,0 +1,72 @@
+#!/bin/zsh
+
+#  * @file change_keyboard_brightlight
+#  * @brief Keyboard backlight control with cyclic behavior and Dunst notification.
+#  * @details Reads current brightness, optionally increments it cyclically, and applies notifications upon change.
+
+BRIGHTNESS_FILE="/sys/class/leds/asus::kbd_backlight/brightness"
+MAX_BRIGHTNESS_FILE="/sys/class/leds/asus::kbd_backlight/max_brightness"
+
+# Set 1 to update keyboard brightness
+# Set 0 to show notify only
+CONF_CHANGE_BRIGHTNESS_EN=0
+
+# This file will save config of the current brightness.
+# If brightness is changed, a notify will be shown.
+# Auto create this file on the first run. 
+CONF_PATH_BRIGHTNESS_VALUE="/tmp/keyboard_brightness_value"
+
+#  * @brief Calculates next brightness, applies it, and sends a notification.
+toggle_cyclic_brightness() {
+    local current
+    local max
+    local saved_val
+    local percent
+
+    #  * Verify if the sysfs paths exist before proceeding.
+    if [ ! -f "$BRIGHTNESS_FILE" ] || [ ! -f "$MAX_BRIGHTNESS_FILE" ]; then
+        echo "Error: Sysfs backlight paths not found." >&2
+        
+        #  * Exit execution with error code due to missing files.
+        exit 1
+    fi
+
+    current=$(cat "$BRIGHTNESS_FILE")
+    max=$(cat "$MAX_BRIGHTNESS_FILE")
+
+    #  * Check if brightness change is enabled to apply cyclic increment.
+    if [ "$CONF_CHANGE_BRIGHTNESS_EN" -eq 1 ]; then
+        current=$(( (current + 1) % (max + 1) ))
+        
+        #  * Apply the new brightness value via sudo tee.
+        echo "$current" | sudo tee "$BRIGHTNESS_FILE" >/dev/null
+    fi
+
+    #  * Check if the config file exists to read the saved brightness value.
+    if [ ! -f "$CONF_PATH_BRIGHTNESS_VALUE" ]; then
+        saved_val=-1
+    else
+        saved_val=$(cat "$CONF_PATH_BRIGHTNESS_VALUE")
+    fi
+
+    #  * Check if the current brightness differs from the saved value to trigger notification.
+    if [ "$current" != "$saved_val" ]; then
+        echo "$current" > "$CONF_PATH_BRIGHTNESS_VALUE"
+        
+        percent=$(( (current * 100) / max ))
+
+        #  * Dispatch desktop notification with progress bar.
+        notify-send -a "kbd_brightness" -u low \
+            -h string:x-canonical-private-synchronous:kbd_brightness \
+            -h "int:value:$percent" \
+            -i "keyboard-brightness-symbolic" \
+            -t 2000 \
+            "Keyboard Light ${percent}%"
+    fi
+}
+
+#  * Execute the main cyclic toggle function.
+toggle_cyclic_brightness
+
+#  * Exit script successfully.
+exit 0

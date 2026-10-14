@@ -1,0 +1,717 @@
+#!/usr/bin/env zsh
+
+###################################################################################################
+# CONFIG
+###################################################################################################
+
+# Set where to save the display configuration, mode, and active profile index
+# E.g:
+# DISP/MODE=0                   # Active mode (0: PC only, 1: Duplicate, 2: Extend, 3: Second only)
+# DISP/PROFILE=0                # Active Extend profile index (0, 1, 2, ...)
+# DISP/NUM=3                    # Number of listed displays
+# DISP/0/Label="eDP-1"          # Built-in display
+# DISP/0/Width=1920
+# DISP/0/Height=1200
+# DISP/0/Refresh=60
+# DISP/0/Primary=4
+# ...
+# PROFILE/0/DISP/NUM=2
+# PROFILE/0/DISP/0/PosX=0
+# PROFILE/0/DISP/0/PosY=1920
+# PROFILE/0/DISP/3/PosX=0
+# PROFILE/0/DISP/3/PosY=0
+PROJECT_MODE="/home/fus/.config/bspwm/scripts/data/display_config"
+DEBUG_LOG="/home/fus/Downloads/debug.log"
+TIMEOUT_SEC=15
+ROFI_THEME_MAIN="/home/fus/.config/bspwm/rofi/popup.rasi"
+ROFI_THEME_PROFILE="/home/fus/.config/bspwm/rofi/popup1.rasi"
+
+log_debug() {
+    [[ -z "$DEBUG_LOG" ]] && return 0
+    mkdir -p "$(dirname "$DEBUG_LOG")" 2>/dev/null
+    printf "[%s] %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$DEBUG_LOG"
+}
+
+###################################################################################################
+# CONFIG API (ReadConfig / WriteConfig / InitConfig)
+###################################################################################################
+
+InitConfig() {
+    local cfg_file="${1:-$PROJECT_MODE}"
+    if [[ -f "$cfg_file" ]]; then
+        return 0
+    fi
+    mkdir -p "$(dirname "$cfg_file")" || return 1
+    cat > "$cfg_file" <<'EOF'
+# Display configuration for Helper-DisplaySwitching
+DISP/MODE=0                   # Active mode (0: PC screen only, 1: Duplicate, 2: Extend, 3: Second screen only)
+DISP/PROFILE=0                # Active Extend profile index (0, 1, 2, ...)
+# Display infomations
+DISP/NUM=3                    # Number of listed displays
+DISP/0/Label="eDP-1"          # Built-in display
+DISP/0/Width=1920
+DISP/0/Height=1200
+DISP/0/Refresh=60
+DISP/0/Primary=4
+DISP/1/Label="DP-1"           # Leave this blank if not used/undetected/unknown
+DISP/1/Width=
+DISP/1/Height=
+DISP/1/Refresh=
+DISP/1/Primary=3
+DISP/2/Label="DP-2"           # Leave this blank if not used/undetected/unknown
+DISP/2/Width=1920
+DISP/2/Height=1080
+DISP/2/Refresh=60
+DISP/2/Primary=2
+DISP/3/Label="HDMI-1"         # Leave this blank if not used/undetected/unknown
+DISP/3/Width=1920
+DISP/3/Height=1080
+DISP/3/Refresh=60
+DISP/3/Primary=1
+# Profile infomations 
+PROFILE/0/DISP/NUM=2          # Profile 0: For two monitors; HDMI-1/wxh/0x0; eDP-1/wxh/0x1920
+PROFILE/0/DISP/0/PosX=0       # Leave this blank if not used/undetected
+PROFILE/0/DISP/0/PosY=1920    # Leave this blank if not used/undetected
+PROFILE/0/DISP/3/PosX=0       # Leave this blank if not used/undetected
+PROFILE/0/DISP/3/PosY=0       # Leave this blank if not used/undetected
+PROFILE/1/DISP/NUM=2          # Profile 1: For two monitors; HDMI-1/wxh/0x0; DP-2/wxh/1080x0
+PROFILE/1/DISP/2/PosX=1080    # Leave this blank if not used/undetected
+PROFILE/1/DISP/2/PosY=0       # Leave this blank if not used/undetected
+PROFILE/1/DISP/3/PosX=0       # Leave this blank if not used/undetected
+PROFILE/1/DISP/3/PosY=0       # Leave this blank if not used/undetected
+PROFILE/2/DISP/NUM=3          # Profile 2: For three monitors
+PROFILE/2/DISP/0/PosX=0       # Leave this blank if not used/undetected
+PROFILE/2/DISP/0/PosY=1920    # Leave this blank if not used/undetected
+PROFILE/2/DISP/2/PosX=1080    # Leave this blank if not used/undetected
+PROFILE/2/DISP/2/PosY=0       # Leave this blank if not used/undetected
+PROFILE/2/DISP/3/PosX=0       # Leave this blank if not used/undetected
+PROFILE/2/DISP/3/PosY=0       # Leave this blank if not used/undetected
+EOF
+    return 0
+}
+
+# ReadConfig: Read value of a key from config file
+# Usage:
+#   ReadConfig "DISP/NUM"
+#   ReadConfig "/path/to/config" "DISP/NUM"
+# Returns:
+#   0: Key found and has non-empty value
+#   1: Key not found or value is empty
+#   2: Config file does not exist or invalid arguments
+ReadConfig() {
+    local cfg_file="$PROJECT_MODE"
+    local key=""
+
+    if [[ $# -eq 1 ]]; then
+        key="$1"
+    elif [[ $# -ge 2 ]]; then
+        cfg_file="$1"
+        key="$2"
+    else
+        return 2
+    fi
+
+    [[ -f "$cfg_file" ]] || return 2
+
+    local raw_line
+    raw_line=$(awk -v k="$key" '
+        /^[[:space:]]*#/ { next }
+        {
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            eq = index(line, "=")
+            if (eq > 0) {
+                cur_key = substr(line, 1, eq - 1)
+                gsub(/[[:space:]]+$/, "", cur_key)
+                if (cur_key == k) {
+                    val = substr(line, eq + 1)
+                    sub(/[[:space:]]*#.*$/, "", val)
+                    sub(/^[[:space:]]+/, "", val)
+                    sub(/[[:space:]]+$/, "", val)
+                    if ((val ~ /^".*"$/) || (val ~ /^\x27.*\x27$/)) {
+                        val = substr(val, 2, length(val) - 2)
+                    }
+                    print val
+                    found = 1
+                    exit 0
+                }
+            }
+        }
+        END {
+            if (!found) exit 1
+        }
+    ' "$cfg_file") || return 1
+
+    if [[ -z "$raw_line" ]]; then
+        return 1
+    fi
+
+    printf "%s\n" "$raw_line"
+    return 0
+}
+
+# WriteConfig: Write or update a key=value pair in the config file
+# Usage:
+#   WriteConfig "DISP/PROFILE" "1"
+#   WriteConfig "DISP/PROFILE=1"
+#   WriteConfig "/path/to/config" "DISP/PROFILE" "1"
+# Returns:
+#   0: Success
+#   1: Invalid arguments
+#   2: File write error
+WriteConfig() {
+    local cfg_file="$PROJECT_MODE"
+    local key=""
+    local val=""
+
+    if [[ $# -eq 1 ]]; then
+        if [[ "$1" == *=* ]]; then
+            key="${1%%=*}"
+            val="${1#*=}"
+        else
+            return 1
+        fi
+    elif [[ $# -eq 2 ]]; then
+        if [[ -f "$1" && "$2" == *=* ]]; then
+            cfg_file="$1"
+            key="${2%%=*}"
+            val="${2#*=}"
+        else
+            key="$1"
+            val="$2"
+        fi
+    elif [[ $# -ge 3 ]]; then
+        cfg_file="$1"
+        key="$2"
+        val="$3"
+    else
+        return 1
+    fi
+
+    [[ -n "$key" ]] || return 1
+    InitConfig "$cfg_file" || return 2
+
+    local tmp_file="${cfg_file}.tmp.$$"
+    awk -v k="$key" -v v="$val" '
+        BEGIN { updated = 0 }
+        {
+            line = $0
+            trimmed = line
+            sub(/^[[:space:]]+/, "", trimmed)
+            if (trimmed !~ /^#/) {
+                eq = index(trimmed, "=")
+                if (eq > 0) {
+                    cur_key = substr(trimmed, 1, eq - 1)
+                    gsub(/[[:space:]]+$/, "", cur_key)
+                    if (cur_key == k) {
+                        comment = ""
+                        if (match($0, /[[:space:]]+#.*$/)) {
+                            comment = substr($0, RSTART, RLENGTH)
+                        }
+                        out_val = v
+                        if (k ~ /\/Label$/ && out_val != "" && out_val !~ /^".*"$/) {
+                            out_val = "\"" out_val "\""
+                        }
+                        printf "%s=%s%s\n", k, out_val, comment
+                        updated = 1
+                        next
+                    }
+                }
+            }
+            print $0
+        }
+        END {
+            if (!updated) {
+                out_val = v
+                if (k ~ /\/Label$/ && out_val != "" && out_val !~ /^".*"$/) {
+                    out_val = "\"" out_val "\""
+                }
+                printf "%s=%s\n", k, out_val
+            }
+        }
+    ' "$cfg_file" > "$tmp_file" && mv "$tmp_file" "$cfg_file" || {
+        rm -f "$tmp_file"
+        return 2
+    }
+
+    return 0
+}
+
+###################################################################################################
+# 0. LOAD MONITOR LIST & PROFILES FROM CONFIG
+###################################################################################################
+
+InitConfig "$PROJECT_MODE"
+
+# Direct CLI access to ReadConfig / WriteConfig
+if [[ "${1:-}" == "ReadConfig" ]]; then
+    shift
+    ReadConfig "$@"
+    exit $?
+elif [[ "${1:-}" == "WriteConfig" ]]; then
+    shift
+    WriteConfig "$@"
+    exit $?
+fi
+
+# Query connected and all outputs from xrandr
+CONNECTED_MONITORS=($(xrandr --query 2>/dev/null | awk '/ connected/{print $1}'))
+ALL_MONITORS=($(xrandr --query 2>/dev/null | awk '/ (connected|disconnected)/{print $1}'))
+ACTUAL_NUM=${#CONNECTED_MONITORS[@]}
+
+log_debug "=== Helper-DisplaySwitching started (args: $*) ==="
+log_debug "CONNECTED_MONITORS (${ACTUAL_NUM}): ${CONNECTED_MONITORS[*]}"
+log_debug "ALL_MONITORS: ${ALL_MONITORS[*]}"
+
+# Discover all DISP/<id> indices defined in config
+DISP_IDS=($(awk -F'[=/]' '/^[[:space:]]*DISP\/[0-9]+\/Label=/{gsub(/^[[:space:]]+/, "", $2); print $2}' "$PROJECT_MODE" | sort -n -u))
+
+typeset -A DISP_LABEL DISP_W DISP_H DISP_RATE DISP_PRI
+for d in "${DISP_IDS[@]}"; do
+    DISP_LABEL[$d]=$(ReadConfig "DISP/$d/Label" 2>/dev/null)
+    DISP_W[$d]=$(ReadConfig "DISP/$d/Width" 2>/dev/null | cut -d'x' -f1)
+    DISP_H[$d]=$(ReadConfig "DISP/$d/Height" 2>/dev/null | awk -F'x' '{print $NF}')
+    DISP_RATE[$d]=$(ReadConfig "DISP/$d/Refresh" 2>/dev/null || echo "60")
+    DISP_PRI[$d]=$(ReadConfig "DISP/$d/Primary" 2>/dev/null || echo "999")
+    log_debug "DISP/$d: Label=${DISP_LABEL[$d]} Mode=${DISP_W[$d]}x${DISP_H[$d]}@${DISP_RATE[$d]}Hz Primary=${DISP_PRI[$d]}"
+done
+
+# Built-in monitor is DISP/0 (fallback to first connected monitor if DISP/0 is missing)
+BUILTIN_OUT="${DISP_LABEL[0]:-eDP-1}"
+BUILTIN_W="${DISP_W[0]}"
+BUILTIN_H="${DISP_H[0]}"
+BUILTIN_RATE="${DISP_RATE[0]:-60}"
+
+if (( ${CONNECTED_MONITORS[(Ie)$BUILTIN_OUT]} == 0 )) && (( ACTUAL_NUM > 0 )); then
+    BUILTIN_OUT="${CONNECTED_MONITORS[1]}"
+fi
+
+# Discover all PROFILE/<id> indices defined in config
+PROFILE_IDS=($(awk -F'[=/]' '/^[[:space:]]*PROFILE\/[0-9]+\//{gsub(/^[[:space:]]+/, "", $2); print $2}' "$PROJECT_MODE" | sort -n -u))
+log_debug "Discovered PROFILE_IDS: ${PROFILE_IDS[*]}"
+
+###################################################################################################
+# 1. PRIMARY SELECTION HELPER (min DISP/*/Primary wins)
+###################################################################################################
+
+# Given a list of display indices (e.g. 0 3), prints the index with the minimum DISP/*/Primary
+get_primary_disp_id() {
+    local best_id=""
+    local best_pri=999999
+    for d in "$@"; do
+        local p="${DISP_PRI[$d]:-999}"
+        [[ "$p" =~ ^[0-9]+$ ]] || p=999
+        if (( p < best_pri )); then
+            best_pri=$p
+            best_id=$d
+        fi
+    done
+    printf "%s" "$best_id"
+}
+
+# Return display indices configured in PROFILE/<p>, sorted by DISP/*/Primary ascending
+get_profile_disp_ids() {
+    local prof_id="$1"
+    local raw_ids=($(awk -F'[=/]' -v p="$prof_id" '
+        /^[[:space:]]*PROFILE\// {
+            sub(/^[[:space:]]+/, "", $0)
+            if ($2 == p && $3 == "DISP" && $4 ~ /^[0-9]+$/) {
+                print $4
+            }
+        }
+    ' "$PROJECT_MODE" | sort -n -u))
+
+    local valid_pairs=()
+    for d in "${raw_ids[@]}"; do
+        local px=$(ReadConfig "PROFILE/$prof_id/DISP/$d/PosX" 2>/dev/null)
+        local py=$(ReadConfig "PROFILE/$prof_id/DISP/$d/PosY" 2>/dev/null)
+        if [[ -n "$px" && -n "$py" ]]; then
+            local pri="${DISP_PRI[$d]:-999}"
+            [[ "$pri" =~ ^[0-9]+$ ]] || pri=999
+            valid_pairs+=("${pri}:${d}")
+        fi
+    done
+
+    if (( ${#valid_pairs[@]} > 0 )); then
+        printf "%s\n" "${valid_pairs[@]}" | sort -t: -k1,1n -k2,2n | cut -d: -f2
+    fi
+}
+
+###################################################################################################
+# DESKTOP RELOAD & MODE ACTIONS
+###################################################################################################
+
+reload_desktop_env() {
+    sleep 0.5
+    log_debug "Reloading bspwm (bspc wm -r)"
+    bspc wm -r
+}
+
+# Mode 0: PC screen only (Built-in only)
+apply_pc_only() {
+    local cmd="xrandr"
+    for out in "${ALL_MONITORS[@]}"; do
+        if [[ "$out" != "$BUILTIN_OUT" ]]; then
+            cmd="$cmd --output \"$out\" --off"
+        fi
+    done
+
+    if [[ -n "$BUILTIN_W" && -n "$BUILTIN_H" ]]; then
+        cmd="$cmd --output \"$BUILTIN_OUT\" --mode \"${BUILTIN_W}x${BUILTIN_H}\" --pos 0x0 --primary"
+    else
+        cmd="$cmd --output \"$BUILTIN_OUT\" --auto --pos 0x0 --primary"
+    fi
+
+    log_debug "Executing PC only: $cmd"
+    eval "$cmd" || xrandr --output "$BUILTIN_OUT" --auto --pos 0x0 --primary
+    log_debug "PC only exit code: $?"
+    WriteConfig "DISP/MODE" "0"
+}
+
+# Mode 1: Duplicate
+apply_duplicate() {
+    if (( ACTUAL_NUM <= 1 )); then
+        log_debug "Duplicate failed: ACTUAL_NUM=$ACTUAL_NUM <= 1"
+        apply_pc_only
+        notify-send -u critical -i preferences-desktop-display \
+            "Display" "No external monitor. Reverted to PC mode."
+        return 1
+    fi
+
+    local conn_ids=()
+    for d in "${DISP_IDS[@]}"; do
+        local lbl="${DISP_LABEL[$d]}"
+        if [[ -n "$lbl" ]] && (( ${CONNECTED_MONITORS[(Ie)$lbl]} > 0 )); then
+            conn_ids+=("$d")
+        fi
+    done
+    local pri_id=$(get_primary_disp_id "${conn_ids[@]}")
+    local pri_out="${DISP_LABEL[$pri_id]:-$BUILTIN_OUT}"
+
+    local cmd="xrandr"
+    for out in "${ALL_MONITORS[@]}"; do
+        if (( ${CONNECTED_MONITORS[(Ie)$out]} == 0 )); then
+            cmd="$cmd --output \"$out\" --off"
+        fi
+    done
+
+    cmd="$cmd --output \"$BUILTIN_OUT\" --auto --pos 0x0"
+    [[ "$BUILTIN_OUT" == "$pri_out" ]] && cmd="$cmd --primary"
+
+    for out in "${CONNECTED_MONITORS[@]}"; do
+        if [[ "$out" == "$BUILTIN_OUT" ]]; then
+            continue
+        fi
+        cmd="$cmd --output \"$out\" --auto --same-as \"$BUILTIN_OUT\""
+        [[ "$out" == "$pri_out" ]] && cmd="$cmd --primary"
+    done
+
+    log_debug "Executing Duplicate: $cmd"
+    eval "$cmd"
+    log_debug "Duplicate exit code: $?"
+    WriteConfig "DISP/MODE" "1"
+    notify-send -u low -i preferences-desktop-display "Display" "Duplicate mode active (Primary: $pri_out)."
+}
+
+# Validate if a specific PROFILE/<p> matches connected hardware and DISP definitions
+check_profile_matches_hardware() {
+    local prof_id="$1"
+    local expected_num=$(ReadConfig "PROFILE/$prof_id/DISP/NUM" 2>/dev/null || echo "0")
+    local prof_disps=($(get_profile_disp_ids "$prof_id"))
+
+    log_debug "Checking Profile $prof_id: expected_num=$expected_num, prof_disps=(${prof_disps[*]})"
+
+    if (( ${#prof_disps[@]} < 2 )); then
+        log_debug "Profile $prof_id mismatch: fewer than 2 displays configured (${#prof_disps[@]})"
+        return 1
+    fi
+
+    if [[ "$expected_num" =~ ^[0-9]+$ ]] && (( expected_num > 0 )) && (( ${#prof_disps[@]} != expected_num )); then
+        log_debug "Profile $prof_id mismatch: configured count (${#prof_disps[@]}) != expected_num ($expected_num)"
+        return 1
+    fi
+
+    for d in "${prof_disps[@]}"; do
+        local lbl="${DISP_LABEL[$d]}"
+        local w="${DISP_W[$d]}"
+        local h="${DISP_H[$d]}"
+        if [[ -z "$lbl" || -z "$w" || -z "$h" ]]; then
+            log_debug "Profile $prof_id mismatch: DISP/$d missing Label ($lbl), Width ($w), or Height ($h)"
+            return 1
+        fi
+        if (( ${CONNECTED_MONITORS[(Ie)$lbl]} == 0 )); then
+            log_debug "Profile $prof_id mismatch: display $lbl (DISP/$d) is NOT in CONNECTED_MONITORS (${CONNECTED_MONITORS[*]})"
+            return 1
+        fi
+    done
+
+    log_debug "Profile $prof_id hardware check PASSED"
+    return 0
+}
+
+# Mode 2: Extend for PROFILE/<p>
+# Note: In display_config, PosX = row (vertical offset Y) and PosY = col (horizontal offset X),
+# so xrandr --pos <X>x<Y> uses --pos ${py}x${px}
+apply_extend_profile() {
+    local prof_id="$1"
+
+    if ! check_profile_matches_hardware "$prof_id"; then
+        apply_pc_only
+        notify-send -u critical -i preferences-desktop-display \
+            "Display: Profile $prof_id Failed" \
+            "Config mismatch or display unplugged. Reverted to PC mode."
+        return 1
+    fi
+
+    local prof_disps=($(get_profile_disp_ids "$prof_id"))
+    local pri_id=$(get_primary_disp_id "${prof_disps[@]}")
+    local pri_out="${DISP_LABEL[$pri_id]}"
+
+    local active_outputs=()
+    for d in "${prof_disps[@]}"; do
+        active_outputs+=("${DISP_LABEL[$d]}")
+    done
+
+    local cmd="xrandr"
+
+    # 1. Turn off unused/disconnected monitors FIRST so CRTCs are freed
+    for out in "${ALL_MONITORS[@]}"; do
+        if (( ${active_outputs[(Ie)$out]} == 0 )); then
+            cmd="$cmd --output \"$out\" --off"
+        fi
+    done
+
+    # 2. Configure active monitors in the profile
+    for d in "${prof_disps[@]}"; do
+        local lbl="${DISP_LABEL[$d]}"
+        local w="${DISP_W[$d]}"
+        local h="${DISP_H[$d]}"
+        local px=$(ReadConfig "PROFILE/$prof_id/DISP/$d/PosX" 2>/dev/null)
+        local py=$(ReadConfig "PROFILE/$prof_id/DISP/$d/PosY" 2>/dev/null)
+
+        # PosX in config is row (vertical Y), PosY in config is col (horizontal X) -> xrandr --pos ${py}x${px}
+        cmd="$cmd --output \"$lbl\" --mode \"${w}x${h}\" --pos ${py}x${px}"
+        if [[ "$d" == "$pri_id" ]]; then
+            cmd="$cmd --primary"
+        fi
+        log_debug "Profile $prof_id DISP/$d ($lbl): mode=${w}x${h} config_Pos(row=${px},col=${py}) -> xrandr_pos=${py}x${px} primary=$([[ $d == $pri_id ]] && echo yes || echo no)"
+    done
+
+    log_debug "Executing Extend Profile $prof_id: $cmd"
+    eval "$cmd" || {
+        log_debug "Extend Profile $prof_id xrandr FAILED!"
+        apply_pc_only
+        notify-send -u critical -i preferences-desktop-display \
+            "Display: Profile $prof_id Error" "xrandr failed. Reverted to PC mode."
+        return 1
+    }
+    log_debug "Extend Profile $prof_id applied successfully"
+
+    WriteConfig "DISP/MODE" "2"
+    WriteConfig "DISP/PROFILE" "$prof_id"
+    notify-send -u normal -i preferences-desktop-display \
+        "Display: Extend | Profile $prof_id" \
+        "Primary: $pri_out\nConfig: $PROJECT_MODE"
+}
+
+# Mode 3: Second screen only (picks connected external display with min DISP/*/Primary)
+apply_second_only() {
+    local ext_ids=()
+
+    for d in "${DISP_IDS[@]}"; do
+        local lbl="${DISP_LABEL[$d]}"
+        if [[ -n "$lbl" && "$lbl" != "$BUILTIN_OUT" ]] && (( ${CONNECTED_MONITORS[(Ie)$lbl]} > 0 )); then
+            ext_ids+=("$d")
+        fi
+    done
+
+    local ext_out=""
+    if (( ${#ext_ids[@]} > 0 )); then
+        local best_ext_id=$(get_primary_disp_id "${ext_ids[@]}")
+        ext_out="${DISP_LABEL[$best_ext_id]}"
+    else
+        for out in "${CONNECTED_MONITORS[@]}"; do
+            if [[ "$out" != "$BUILTIN_OUT" ]]; then
+                ext_out="$out"
+                break
+            fi
+        done
+    fi
+
+    if [[ -z "$ext_out" ]]; then
+        log_debug "Second screen only failed: no external display connected"
+        apply_pc_only
+        notify-send -u critical -i preferences-desktop-display \
+            "Display" "No external monitor. Reverted to PC mode."
+        return 1
+    fi
+
+    local cmd="xrandr --output $BUILTIN_OUT --off --output $ext_out --auto --pos 0x0 --primary"
+    for out in "${ALL_MONITORS[@]}"; do
+        if [[ "$out" != "$BUILTIN_OUT" && "$out" != "$ext_out" ]]; then
+            cmd="$cmd --output $out --off"
+        fi
+    done
+
+    log_debug "Executing Second screen only: $cmd"
+    eval "$cmd"
+    log_debug "Second screen only exit code: $?"
+    WriteConfig "DISP/MODE" "3"
+    notify-send -u low -i preferences-desktop-display "Display" "Second screen only ($ext_out)."
+}
+
+###################################################################################################
+# STARTUP CHECK / AUTO FALLBACK
+###################################################################################################
+
+if [[ "${1:-}" == "--startup" || "${1:-}" == "--check" ]]; then
+    SAVED_MODE=$(ReadConfig "DISP/MODE" 2>/dev/null || echo "0")
+    SAVED_PROF=$(ReadConfig "DISP/PROFILE" 2>/dev/null || echo "0")
+    log_debug "Startup check: SAVED_MODE=$SAVED_MODE, SAVED_PROF=$SAVED_PROF"
+
+    case "$SAVED_MODE" in
+        0)
+            apply_pc_only
+            ;;
+        1)
+            apply_duplicate
+            ;;
+        2)
+            apply_extend_profile "$SAVED_PROF"
+            ;;
+        3)
+            apply_second_only
+            ;;
+        *)
+            apply_pc_only
+            ;;
+    esac
+    exit 0
+fi
+
+###################################################################################################
+# STEP 1: MAIN ROFI MENU (4 STANDARD MODES)
+###################################################################################################
+
+MAIN_OPTIONS=(
+    "1. PC screen only"
+    "2. Duplicate"
+    "3. Extend"
+    "4. Second screen only"
+)
+
+CURRENT_MODE=$(ReadConfig "DISP/MODE" 2>/dev/null || echo "0")
+if [[ ! "$CURRENT_MODE" =~ ^[0-3]$ ]]; then
+    CURRENT_MODE=0
+fi
+
+NEXT_MODE=$(( (CURRENT_MODE + 1) % 4 ))
+
+MAIN_CHOICE=$(printf "%s\n" "${MAIN_OPTIONS[@]}" | timeout "$TIMEOUT_SEC" rofi \
+    -dmenu -i \
+    -lines 4 -eh 1 \
+    -selected-row "$NEXT_MODE" \
+    -p "Project (${TIMEOUT_SEC}s)" \
+    -theme "$ROFI_THEME_MAIN")
+EXIT_CODE=$?
+
+if [[ "$EXIT_CODE" -eq 124 ]]; then
+    MAIN_CHOICE="${MAIN_OPTIONS[$(( NEXT_MODE + 1 ))]}"
+elif [[ "$EXIT_CODE" -ne 0 ]] || [[ -z "$MAIN_CHOICE" ]]; then
+    log_debug "Main menu cancelled (exit=$EXIT_CODE)"
+    exit 0
+fi
+
+log_debug "Main menu selected: $MAIN_CHOICE"
+
+###################################################################################################
+# STEP 2: HANDLE SELECTION (OPEN PROFILE PICKER WHEN EXTEND IS CHOSEN)
+###################################################################################################
+
+case "$MAIN_CHOICE" in
+    "1. PC screen only")
+        apply_pc_only
+        notify-send -u low -i preferences-desktop-display "Display" "PC screen only ($BUILTIN_OUT)."
+        ;;
+    "2. Duplicate")
+        apply_duplicate
+        ;;
+    "3. Extend")
+        PROF_ENTRIES=()
+        PROF_ARGS=()
+        MAX_EH=1
+        MAX_CHARS=28
+
+        for p in "${PROFILE_IDS[@]}"; do
+            prof_disps=($(get_profile_disp_ids "$p"))
+            (( ${#prof_disps[@]} == 0 )) && continue
+
+            lines_in_item=$(( 1 + ${#prof_disps[@]} ))
+            (( lines_in_item > MAX_EH )) && MAX_EH=$lines_in_item
+
+            entry_text="Profile ${p}"
+            for d in "${prof_disps[@]}"; do
+                lbl="${DISP_LABEL[$d]:-DISP-$d}"
+                w="${DISP_W[$d]:-auto}"
+                h="${DISP_H[$d]:-auto}"
+                rate="${DISP_RATE[$d]:-60}"
+                px=$(ReadConfig "PROFILE/$p/DISP/$d/PosX" 2>/dev/null || echo "0")
+                py=$(ReadConfig "PROFILE/$p/DISP/$d/PosY" 2>/dev/null || echo "0")
+                line_str="${lbl}, ${w}x${h}, ${px}x${py}, ${rate}Hz"
+                (( ${#line_str} > MAX_CHARS )) && MAX_CHARS=${#line_str}
+                entry_text+=$'\n'"${line_str}"
+            done
+
+            PROF_ENTRIES+=("$entry_text")
+            PROF_ARGS+=("$p")
+        done
+
+        TOTAL_PROFS=${#PROF_ENTRIES[@]}
+        if (( TOTAL_PROFS == 0 )); then
+            log_debug "No Extend profiles found in config"
+            apply_pc_only
+            notify-send -u critical -i preferences-desktop-display \
+                "Display" "No Extend profiles found in config. Reverted to PC mode."
+            reload_desktop_env
+            exit 1
+        fi
+
+        CUR_PROF=$(ReadConfig "DISP/PROFILE" 2>/dev/null || echo "0")
+        SEL_ROW=0
+        for idx in {1..$TOTAL_PROFS}; do
+            if [[ "${PROF_ARGS[$idx]}" == "$CUR_PROF" ]]; then
+                SEL_ROW=$(( idx - 1 ))
+                break
+            fi
+        done
+
+        ROFI_PROF_INPUT=$(printf "%s\x0f" "${PROF_ENTRIES[@]}")
+        ROFI_PROF_INPUT="${ROFI_PROF_INPUT%$'\x0f'}"
+        WIN_WIDTH_CH=$(( MAX_CHARS + 6 ))
+
+        PROF_CHOICE_IDX=$(printf "%s" "$ROFI_PROF_INPUT" | timeout "$TIMEOUT_SEC" rofi \
+            -dmenu -sep $'\x0f' -format i -i \
+            -eh "$MAX_EH" -lines "$TOTAL_PROFS" \
+            -selected-row "$SEL_ROW" \
+            -p "Extend Profile" \
+            -theme "$ROFI_THEME_PROFILE" \
+            -theme-str "window { width: ${WIN_WIDTH_CH}ch; }")
+        PROF_EXIT=$?
+
+        if [[ "$PROF_EXIT" -eq 124 ]]; then
+            PROF_CHOICE_IDX="$SEL_ROW"
+        elif [[ "$PROF_EXIT" -ne 0 ]] || [[ -z "$PROF_CHOICE_IDX" ]]; then
+            log_debug "Profile menu cancelled (exit=$PROF_EXIT)"
+            exit 0
+        fi
+
+        chosen_prof_id="${PROF_ARGS[$(( PROF_CHOICE_IDX + 1 ))]}"
+        log_debug "Profile menu selected index=$PROF_CHOICE_IDX -> Profile $chosen_prof_id"
+        apply_extend_profile "$chosen_prof_id"
+        ;;
+    "4. Second screen only")
+        apply_second_only
+        ;;
+esac
+
+reload_desktop_env

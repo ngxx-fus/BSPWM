@@ -1,0 +1,138 @@
+#!/bin/sh
+# Battery monitor script with customizable icons and paths
+
+# ==============================================================================
+# CONFIGURATION
+# ==============================================================================
+BAT_NAME="${BAT_NAME:-BAT1}"
+AC_NAME="${AC_NAME:-ACAD}"
+
+BAT_PATH="/sys/class/power_supply/${BAT_NAME}"
+AC_PATH="/sys/class/power_supply/${AC_NAME}"
+
+# Set 1 to enable icon, 0 to disable
+SHOW_ICON_EN="${SHOW_ICON_EN:-0}"
+
+# Icons: 100% -> 10%
+ICON_CHR_100="󰂅"
+ICON_CHR_90="󰂋"
+ICON_CHR_80="󰂊"
+ICON_CHR_70="󰢞"
+ICON_CHR_60="󰂉"
+ICON_CHR_50="󰢝"
+ICON_CHR_40="󰂈"
+ICON_CHR_30="󰂇"
+ICON_CHR_20="󰂆"
+ICON_CHR_10="󰢜"
+
+ICON_DIS_100="󰁹"
+ICON_DIS_90="󰂂"
+ICON_DIS_80="󰂁"
+ICON_DIS_70="󰂀"
+ICON_DIS_60="󰁿"
+ICON_DIS_50="󰁾"
+ICON_DIS_40="󰁽"
+ICON_DIS_30="󰁼"
+ICON_DIS_20="󰁻"
+ICON_DIS_10="󰁺"
+
+ICON_AC="🔌"
+# ==============================================================================
+
+# Abort if battery device directory does not exist
+[ -d "$BAT_PATH" ] || exit 1
+
+# 1. Read raw metrics from sysfs
+status=$(cat "$BAT_PATH/status" 2>/dev/null || echo "Unknown")
+capacity=$(cat "$BAT_PATH/capacity" 2>/dev/null || echo "0")
+ac_online=$(cat "$AC_PATH/online" 2>/dev/null || echo "0")
+
+# Compute power rate in Watts
+if [ -f "$BAT_PATH/power_now" ]; then
+    raw_pwr=$(cat "$BAT_PATH/power_now")
+    power_w=$(awk "BEGIN {printf \"%.1f\", $raw_pwr / 1000000}")
+else
+    raw_volt=$(cat "$BAT_PATH/voltage_now" 2>/dev/null || echo 0)
+    raw_curr=$(cat "$BAT_PATH/current_now" 2>/dev/null || echo 0)
+    power_w=$(awk "BEGIN {printf \"%.1f\", ($raw_volt * $raw_curr) / 1000000000000}")
+fi
+
+# 2. Map icon based on battery charge percentage
+get_charging_icon() {
+    [ "$SHOW_ICON_EN" -eq 1 ] || return
+
+    pct=$1
+    if [ "$pct" -ge 95 ]; then echo "$ICON_CHR_100 "
+    elif [ "$pct" -ge 85 ]; then echo "$ICON_CHR_90 "
+    elif [ "$pct" -ge 75 ]; then echo "$ICON_CHR_80 "
+    elif [ "$pct" -ge 65 ]; then echo "$ICON_CHR_70 "
+    elif [ "$pct" -ge 55 ]; then echo "$ICON_CHR_60 "
+    elif [ "$pct" -ge 45 ]; then echo "$ICON_CHR_50 "
+    elif [ "$pct" -ge 35 ]; then echo "$ICON_CHR_40 "
+    elif [ "$pct" -ge 25 ]; then echo "$ICON_CHR_30 "
+    elif [ "$pct" -ge 15 ]; then echo "$ICON_CHR_20 "
+    else echo "$ICON_CHR_10 "
+    fi
+}
+
+get_discharging_icon() {
+    [ "$SHOW_ICON_EN" -eq 1 ] || return
+
+    pct=$1
+    if [ "$pct" -ge 95 ]; then echo "$ICON_DIS_100 "
+    elif [ "$pct" -ge 85 ]; then echo "$ICON_DIS_90 "
+    elif [ "$pct" -ge 75 ]; then echo "$ICON_DIS_80 "
+    elif [ "$pct" -ge 65 ]; then echo "$ICON_DIS_70 "
+    elif [ "$pct" -ge 55 ]; then echo "$ICON_DIS_60 "
+    elif [ "$pct" -ge 45 ]; then echo "$ICON_DIS_50 "
+    elif [ "$pct" -ge 35 ]; then echo "$ICON_DIS_40 "
+    elif [ "$pct" -ge 25 ]; then echo "$ICON_DIS_30 "
+    elif [ "$pct" -ge 15 ]; then echo "$ICON_DIS_20 "
+    else echo "$ICON_DIS_10 "
+    fi
+}
+
+# 3. Calculate ECT (Estimated Charge/Discharge Time)
+calc_time() {
+    target_charge=$1
+    raw_curr=$(cat "$BAT_PATH/current_now" 2>/dev/null || echo 0)
+
+    # Return placeholder if discharge/charge current is missing or zero
+    if [ -z "$raw_curr" ] || [ "$raw_curr" -le 0 ]; then
+        echo "--:--"
+        return
+    fi
+
+    # Remaining minutes: (|target_charge - charge_now| / current_now) * 60
+    diff=$(awk "BEGIN {diff = $target_charge - $(cat "$BAT_PATH/charge_now" 2>/dev/null || echo 0); print (diff < 0) ? -diff : diff}")
+    total_minutes=$(awk "BEGIN {printf \"%d\", ($diff / $raw_curr) * 60}")
+
+    hours=$((total_minutes / 60))
+    minutes=$((total_minutes % 60))
+    printf "%02dh%02dm" "$hours" "$minutes"
+}
+
+# 4. Format output by power supply state
+if [ "$status" = "Charging" ]; then
+    icon=$(get_charging_icon "$capacity")
+    threshold=$(cat "$BAT_PATH/charge_control_end_threshold" 2>/dev/null || echo 100)
+    full_charge=$(cat "$BAT_PATH/charge_full" 2>/dev/null || echo 0)
+    target_val=$(awk "BEGIN {printf \"%d\", ($full_charge * $threshold) / 100}")
+
+    ect=$(calc_time "$target_val")
+    printf "%s+%sW | %s%% | ECT: %s\n" "$icon" "$power_w" "$capacity" "$ect"
+
+elif [ "$status" = "Discharging" ]; then
+    icon=$(get_discharging_icon "$capacity")
+    ect=$(calc_time 0)
+    printf "%s-%sW | %s%% | REM: %s\n" "$icon" "$power_w" "$capacity" "$ect"
+
+else
+    # Plugged in with charging idle or threshold reached
+    if [ "$SHOW_ICON_EN" -eq 1 ]; then
+        icon=$(get_charging_icon "$capacity")
+        printf "%s %sAC ON | %s%% | 0.0W\n" "$ICON_AC" "$icon" "$capacity"
+    else
+        printf "AC ON | %s%% | 0.0W\n" "$capacity"
+    fi
+fi

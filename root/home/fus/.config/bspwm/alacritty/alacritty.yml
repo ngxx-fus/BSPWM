@@ -1,0 +1,117 @@
+# ==============================================================================
+# ALACRITTY CONFIGURATION
+# Location: ~/.config/bspwm/alacritty/alacritty.yml
+# Symlinked to: ~/.config/alacritty/alacritty.yml
+# ==============================================================================
+
+# Window configurations
+window:
+  dimensions:
+    columns: 90
+    lines: 26
+
+  padding:
+    x: 12
+    y: 12
+
+  dynamic_padding: true
+  decorations: none
+  opacity: 0.95
+  title: "Alacritty"
+  class:
+    general: "Alacritty"
+    instance: "Alacritty"
+
+# Scrolling buffer
+scrolling:
+  history: 10000
+  multiplier: 3
+
+# Font settings
+font:
+  normal:
+    family: "JetBrains Mono"
+    style: Regular
+  bold:
+    family: "JetBrains Mono"
+    style: Bold
+  italic:
+    family: "JetBrains Mono"
+    style: Italic
+  bold_italic:
+    family: "JetBrains Mono"
+    style: Bold Italic
+  size: 10.5
+  offset:
+    x: 0
+    y: 0
+  glyph_offset:
+    x: 0
+    y: 0
+
+# Color scheme (Harmonized with Polybar and BSPWM theme)
+colors:
+  primary:
+    background: '#17171c'
+    foreground: '#d2cbbc'
+    dim_foreground: '#828482'
+
+  cursor:
+    text: '#17171c'
+    cursor: '#50a5f5'
+
+  vi_mode_cursor:
+    text: '#17171c'
+    cursor: '#d88c79'
+
+  selection:
+    text: CellForeground
+    background: '#32323f'
+
+  normal:
+    black:   '#25252d'
+    red:     '#cf9181'
+    green:   '#a9b665'
+    yellow:  '#d8a657'
+    blue:    '#50a5f5'
+    magenta: '#9499d1'
+    cyan:    '#89b482'
+    white:   '#d2cbbc'
+
+  bright:
+    black:   '#5c5c70'
+    red:     '#ea6962'
+    green:   '#b8bb26'
+    yellow:  '#ebdbb2'
+    blue:    '#52bdff'
+    magenta: '#d3869b'
+    cyan:    '#a9c9a4'
+    white:   '#fbf1c7'
+
+# Cursor settings
+cursor:
+  style:
+    shape: Beam
+    blinking: On
+  blink_interval: 500
+  unfocused_hollow: true
+
+# Bell (audio notification)
+bell:
+  animation: EaseOutExpo
+  duration: 0
+
+# Mouse interaction
+mouse:
+  hide_when_typing: true
+
+# Key bindings
+key_bindings:
+  - { key: V,        mods: Control|Shift, action: Paste            }
+  - { key: C,        mods: Control|Shift, action: Copy             }
+  - { key: Insert,   mods: Shift,         action: PasteSelection   }
+  - { key: Key0,     mods: Control,       action: ResetFontSize    }
+  - { key: Equals,   mods: Control,       action: IncreaseFontSize }
+  - { key: Plus,     mods: Control,       action: IncreaseFontSize }
+  - { key: Minus,    mods: Control,       action: DecreaseFontSize }
+

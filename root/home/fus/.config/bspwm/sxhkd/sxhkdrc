@@ -4,7 +4,7 @@
 
 # Launch terminal emulator
 super + {Return,r}
-	gnome-terminal
+	alacritty
 
 # Launch rofi app finder / universe
 alt + space

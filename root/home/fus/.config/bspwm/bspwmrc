@@ -1,9 +1,10 @@
 #!/bin/zsh
 
-# Set environment variables for input method
+# Set environment variables for input method & smooth gestures
 export GTK_IM_MODULE=fcitx
 export QT_IM_MODULE=fcitx
 export XMODIFIERS=@im=fcitx
+export MOZ_USE_XINPUT2=1
 export DOT_CONF="/home/fus/.config"
 
 # Start sxhkd hotkey daemon if not running (use /bin/sh to prevent zsh tilde expansion errors)
@@ -67,6 +68,8 @@ bspc rule -a Pavucontrol state=floating
 bspc rule -a Blueman-manager state=floating
 bspc rule -a Nm-connection-editor state=floating
 bspc rule -a "Event Tester" state=floating
+bspc rule -a btop-term state=floating
+bspc rule -a float-term state=floating
 
 # Thunar file manager rules
 bspc rule -a Code:code:Open* state=floating rectangle=950x650+0+0 center=on

@@ -1,5 +1,5 @@
 # Display configuration for Helper-DisplaySwitching
-DISP/MODE=2                   # Active mode (0: PC screen only, 1: Duplicate, 2: Extend, 3: Second screen only)
+DISP/MODE=0                   # Active mode (0: PC screen only, 1: Duplicate, 2: Extend, 3: Second screen only)
 DISP/PROFILE=1                # Active Extend profile index (0, 1, 2, ...)
 
 # Display infomations

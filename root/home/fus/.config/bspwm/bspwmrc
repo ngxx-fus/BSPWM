@@ -38,14 +38,14 @@ for m in $(bspc query -M --names 2>/dev/null); do
 done
 
 # Padding configuration (fix large top margin under Polybar)
-bspc config top_padding          0
+bspc config top_padding          -2
 bspc config bottom_padding       0
 bspc config left_padding         0
 bspc config right_padding        0
 
 # Window layout and gap configurations
 bspc config border_width         2
-bspc config window_gap           8
+bspc config window_gap           4
 bspc config split_ratio          0.52
 bspc config borderless_monocle   true
 bspc config gapless_monocle      true
@@ -86,6 +86,9 @@ bspc config pointer_modifier   mod4
 bspc config pointer_action1    move
 bspc config pointer_action2    resize_side
 bspc config pointer_action3    resize_side
+
+# Focus follows pointer (hover focus)
+bspc config focus_follows_pointer true
 
 # Allow dragging/moving tiled windows across nodes
 bspc config pointer_motion_interval 17

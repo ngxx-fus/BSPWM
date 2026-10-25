@@ -1,40 +1,57 @@
-#!/usr/bin/env bash
+#!/usr/bin/env zsh
 
-# Calculate instantaneous CPU usage percentage
-cpu=$(top -bn1 2>/dev/null | awk '/Cpu\(s\)/ {printf "%2.0f", $2 + $4}')
-[ -z "$cpu" ] && cpu=" 0"
+# Read CPU stats into arrays (avoids multiple spaces issue in Zsh)
+stat1=( $(head -n1 /proc/stat) )
+sleep 0.5
+stat2=( $(head -n1 /proc/stat) )
 
-# Read CPU temperature
-temp=""
-if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
-    raw=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
-    [ -n "$raw" ] && temp=$(( raw / 1000 ))
+# Calculate total and idle times (Zsh arrays are 1-indexed)
+total1=$(( stat1[2] + stat1[3] + stat1[4] + stat1[5] + stat1[6] + stat1[7] + stat1[8] + stat1[9] ))
+total2=$(( stat2[2] + stat2[3] + stat2[4] + stat2[5] + stat2[6] + stat2[7] + stat2[8] + stat2[9] ))
+idle1=$(( stat1[5] + stat1[6] ))
+idle2=$(( stat2[5] + stat2[6] ))
+
+diff_total=$(( total2 - total1 ))
+diff_idle=$(( idle2 - idle1 ))
+
+if (( diff_total > 0 )); then
+    cpu=$(( (diff_total - diff_idle) * 100 / diff_total ))
+else
+    cpu=0
 fi
 
-if [ -z "$temp" ]; then
-    for f in /sys/class/hwmon/hwmon*/temp1_input; do
-        if [ -f "$f" ]; then
-            raw=$(cat "$f" 2>/dev/null)
-            if [ -n "$raw" ]; then
-                temp=$(( raw / 1000 ))
-                break
-            fi
+# Get CPU temp (priority: x86_pkg_temp > TCPU > acpitz)
+temp=""
+for z in /sys/class/thermal/thermal_zone<->(N); do
+    type=$(cat "$z/type" 2>/dev/null)
+    if [[ "$type" == "x86_pkg_temp" ]]; then
+        temp=$(( $(cat "$z/temp" 2>/dev/null) / 1000 ))
+        break
+    fi
+done
+
+# Fallback to TCPU or acpitz if x86_pkg_temp is not found
+if [[ -z "$temp" ]]; then
+    for z in /sys/class/thermal/thermal_zone<->(N); do
+        type=$(cat "$z/type" 2>/dev/null)
+        if [[ "$type" == "TCPU" || "$type" == "acpitz" ]]; then
+            temp=$(( $(cat "$z/temp" 2>/dev/null) / 1000 ))
+            break
         fi
     done
 fi
 
-[ -z "$temp" ] && temp="--"
+[[ -z "$temp" ]] && temp="--"
 
-# Choose thermal ramp icon based on temperature (colored with primary blue #50a5f5)
-if [ "$temp" != "--" ] && [ "$temp" -ge 80 ]; then
+# Choose thermal ramp icon based on temperature
+if [[ "$temp" != "--" ]] && (( temp >= 80 )); then
     t_icon="%{F#ebf831}%{F-}"
-elif [ "$temp" != "--" ] && [ "$temp" -ge 65 ]; then
+elif [[ "$temp" != "--" ]] && (( temp >= 65 )); then
     t_icon="%{F#50a5f5}%{F-}"
-elif [ "$temp" != "--" ] && [ "$temp" -ge 50 ]; then
+elif [[ "$temp" != "--" ]] && (( temp >= 50 )); then
     t_icon="%{F#50a5f5}%{F-}"
 else
     t_icon="%{F#50a5f5}%{F-}"
 fi
 
-echo "${cpu}%  ${t_icon} ${temp}°C"
-
+printf "%2d%%  %s %s°C\n" "$cpu" "$t_icon" "$temp"

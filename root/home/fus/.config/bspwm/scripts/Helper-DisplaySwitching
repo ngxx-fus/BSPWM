@@ -514,28 +514,35 @@ apply_extend_profile() {
         "Primary: $pri_out\nConfig: $PROJECT_MODE"
 }
 
-# Mode 3: Second screen only (picks connected external display with min DISP/*/Primary)
+# Mode 3: Second screen only (picks connected external display)
+# Arg $1 (Optional): Specific output label to use (bypasses auto-select)
 apply_second_only() {
-    local ext_ids=()
-
-    for d in "${DISP_IDS[@]}"; do
-        local lbl="${DISP_LABEL[$d]}"
-        if [[ -n "$lbl" && "$lbl" != "$BUILTIN_OUT" ]] && (( ${CONNECTED_MONITORS[(Ie)$lbl]} > 0 )); then
-            ext_ids+=("$d")
-        fi
-    done
-
+    local target_ext="$1"
     local ext_out=""
-    if (( ${#ext_ids[@]} > 0 )); then
-        local best_ext_id=$(get_primary_disp_id "${ext_ids[@]}")
-        ext_out="${DISP_LABEL[$best_ext_id]}"
+
+    if [[ -n "$target_ext" ]]; then
+        ext_out="$target_ext"
     else
-        for out in "${CONNECTED_MONITORS[@]}"; do
-            if [[ "$out" != "$BUILTIN_OUT" ]]; then
-                ext_out="$out"
-                break
+        # Auto-select fallback (used during startup check)
+        local ext_ids=()
+        for d in "${DISP_IDS[@]}"; do
+            local lbl="${DISP_LABEL[$d]}"
+            if [[ -n "$lbl" && "$lbl" != "$BUILTIN_OUT" ]] && (( ${CONNECTED_MONITORS[(Ie)$lbl]} > 0 )); then
+                ext_ids+=("$d")
             fi
         done
+
+        if (( ${#ext_ids[@]} > 0 )); then
+            local best_ext_id=$(get_primary_disp_id "${ext_ids[@]}")
+            ext_out="${DISP_LABEL[$best_ext_id]}"
+        else
+            for out in "${CONNECTED_MONITORS[@]}"; do
+                if [[ "$out" != "$BUILTIN_OUT" ]]; then
+                    ext_out="$out"
+                    break
+                fi
+            done
+        fi
     fi
 
     if [[ -z "$ext_out" ]]; then
@@ -546,10 +553,30 @@ apply_second_only() {
         return 1
     fi
 
-    local cmd="xrandr --output $BUILTIN_OUT --off --output $ext_out --auto --pos 0x0 --primary"
+    # Lookup resolution and refresh rate from config if defined
+    local target_w="auto"
+    local target_h=""
+    local target_rate=""
+    for d in "${DISP_IDS[@]}"; do
+        if [[ "${DISP_LABEL[$d]}" == "$ext_out" ]]; then
+            target_w="${DISP_W[$d]}"
+            target_h="${DISP_H[$d]}"
+            target_rate="${DISP_RATE[$d]}"
+            break
+        fi
+    done
+
+    local mode_arg="--auto"
+    if [[ -n "$target_w" && -n "$target_h" && "$target_w" != "auto" ]]; then
+        mode_arg="--mode \"${target_w}x${target_h}\""
+    fi
+
+    local cmd="xrandr --output \"$BUILTIN_OUT\" --off --output \"$ext_out\" $mode_arg --pos 0x0 --primary"
+    
+    # Turn off all other monitors
     for out in "${ALL_MONITORS[@]}"; do
         if [[ "$out" != "$BUILTIN_OUT" && "$out" != "$ext_out" ]]; then
-            cmd="$cmd --output $out --off"
+            cmd="$cmd --output \"$out\" --off"
         fi
     done
 
@@ -710,7 +737,61 @@ case "$MAIN_CHOICE" in
         apply_extend_profile "$chosen_prof_id"
         ;;
     "4. Second screen only")
-        apply_second_only
+        EXT_ENTRIES=()
+        EXT_ARGS=()
+        MAX_CHARS=28
+
+        # Gather all connected external monitors defined in DISP configuration
+        for d in "${DISP_IDS[@]}"; do
+            lbl="${DISP_LABEL[$d]}"
+            if [[ -n "$lbl" && "$lbl" != "$BUILTIN_OUT" ]] && (( ${CONNECTED_MONITORS[(Ie)$lbl]} > 0 )); then
+                w="${DISP_W[$d]:-auto}"
+                h="${DISP_H[$d]:-auto}"
+                rate="${DISP_RATE[$d]:-60}"
+                line1="Monitor: ${lbl}"
+                line2="Res: ${w}x${h} @ ${rate}Hz"
+                (( ${#line1} > MAX_CHARS )) && MAX_CHARS=${#line1}
+                (( ${#line2} > MAX_CHARS )) && MAX_CHARS=${#line2}
+                entry_text="${line1}"$'\n'"${line2}"
+                
+                EXT_ENTRIES+=("$entry_text")
+                EXT_ARGS+=("$lbl")
+            fi
+        done
+
+        TOTAL_EXT=${#EXT_ENTRIES[@]}
+        if (( TOTAL_EXT == 0 )); then
+            log_debug "No external displays found for Second screen only menu"
+            apply_pc_only
+            notify-send -u critical -i preferences-desktop-display \
+                "Display" "No external monitor connected. Reverted to PC mode."
+            reload_desktop_env
+            exit 1
+        fi
+
+        ROFI_EXT_INPUT=$(printf "%s\x0f" "${EXT_ENTRIES[@]}")
+        ROFI_EXT_INPUT="${ROFI_EXT_INPUT%$'\x0f'}"
+        WIN_WIDTH_CH=$(( MAX_CHARS + 6 ))
+
+        EXT_CHOICE_IDX=$(printf "%s" "$ROFI_EXT_INPUT" | timeout "$TIMEOUT_SEC" rofi \
+            -dmenu -sep $'\x0f' -format i -i \
+            -eh 2 -lines "$TOTAL_EXT" \
+            -selected-row 0 \
+            -p "Select Monitor" \
+            -theme "$ROFI_THEME_PROFILE" \
+            -theme-str "window { width: ${WIN_WIDTH_CH}ch; }")
+        EXT_EXIT=$?
+
+        if [[ "$EXT_EXIT" -eq 124 ]]; then
+            EXT_CHOICE_IDX=0
+        elif [[ "$EXT_EXIT" -ne 0 ]] || [[ -z "$EXT_CHOICE_IDX" ]]; then
+            log_debug "Second screen menu cancelled (exit=$EXT_EXIT)"
+            exit 0
+        fi
+
+        chosen_ext_lbl="${EXT_ARGS[$(( EXT_CHOICE_IDX + 1 ))]}"
+        log_debug "Second screen menu selected index=$EXT_CHOICE_IDX -> Monitor $chosen_ext_lbl"
+        apply_second_only "$chosen_ext_lbl"
         ;;
 esac
 

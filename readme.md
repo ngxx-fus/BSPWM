@@ -1,6 +1,6 @@
-# 🚀 UbuntuBSPWM: Dotfiles & System Backup Suite
+# 🚀 Void Linux BSPWM: Dotfiles & System Backup Suite
 
-A sleek, modular, and high-performance **bspwm** (Binary Space Partitioning Window Manager) desktop environment for Ubuntu, paired with an automated backup and deployment system for user dotfiles and system configurations.
+A sleek, modular, and high-performance **bspwm** (Binary Space Partitioning Window Manager) desktop environment configured specifically for **Void Linux (`x86_64`)**, paired with an automated synchronization and deployment system for user dotfiles, system configurations, and manual package manifests.
 
 ---
 
@@ -9,12 +9,12 @@ A sleek, modular, and high-performance **bspwm** (Binary Space Partitioning Wind
 - [Overview](#-overview)
 - [Repository Structure](#-repository-structure)
 - [Quick Start Guide](#-quick-start-guide)
-  - [1. Install Dependencies & Packages](#1-install-dependencies--packages)
-  - [2. Deploy Configurations (Restore to Local)](#2-deploy-configurations-restore-to-local)
+  - [1. Clone Repository & Restore Configurations](#1-clone-repository--restore-configurations)
+  - [2. Install Packages via PackagesManual.txt](#2-install-packages-via-packagesmanualtxt)
   - [3. Start / Reload BSPWM](#3-start--reload-bspwm)
 - [Synchronization Scripts](#-synchronization-scripts)
   - [CopyFromLocal (Backup Host -> Repo)](#copyfromlocal-backup-host---repo)
-  - [CopyToLocal (Restore Repo -> Host)](#copytolocal-restore-repo---host)
+  - [CopyToLocal (Restore Repo -> Host + Auto Package Install)](#copytolocal-restore-repo---host--auto-package-install)
   - [CLI Flags & Interactive Prompts](#cli-flags--interactive-prompts)
   - [Managing PathLists.txt](#managing-pathliststxt)
 - [📂 Desktop Environment Layout](#-desktop-environment-layout)
@@ -23,87 +23,98 @@ A sleek, modular, and high-performance **bspwm** (Binary Space Partitioning Wind
   - [🪟 Window Management](#-window-management)
   - [🧭 Workspaces & Multi-Monitor](#-workspaces--multi-monitor)
   - [🔊 Media & Hardware Controls](#-media--hardware-controls)
-- [🛠️ Key Components & Integrations](#-key-components--integrations)
+- [🛠️ Key Components & Void Linux Architecture](#-key-components--void-linux-architecture)
 - [🔒 Security & Permissions Handling](#-security--permissions-handling)
 
 ---
 
 ## 🌟 Overview
 
-**UbuntuBSPWM** provides:
-- A fully customized X11 desktop environment built around **bspwm**, **sxhkd**, **polybar**, **rofi**, **dunst**, and **picom**.
-- Ergonomic multi-monitor profiles, touchpad gestures, volume/brightness OSD notifications, and automatic lock/sleep handling.
-- A zero-dependency, portable backup and restore engine (`CopyFromLocal.sh` and `CopyToLocal.sh`) allowing you to replicate your entire desktop and system configuration across Ubuntu machines in minutes.
+This repository provides a complete, modern Void Linux desktop suite:
+- **Tiling Window Management**: Fully customized X11 desktop environment built around **bspwm**, **sxhkd**, **polybar**, **rofi**, **dunst**, and **picom**.
+- **Void-native Init & Session**: Native integration with Void Linux's **`runit`** and **`elogind`** (using `loginctl` for suspend, reboot, and poweroff).
+- **Desktop Ergonomics**: Dynamic multi-monitor switcher profiles, natural touchpad scrolling and gestures (`touchegg`), Dunst OSD volume/brightness progress bars, GTK3 dark menu styling, and auto-dimming screen lock via `betterlockscreen` + `xidlehook`.
+- **Zero-Dependency Backup Engine**: `CopyFromLocal.sh` and `CopyToLocal.sh` let you back up or deploy your entire desktop configuration and packages on any fresh Void Linux machine in minutes.
 
 ---
 
 ## 🗂️ Repository Structure
 
 ```text
-UbuntuBSPWM/
-├── CopyFromLocal.sh       # Copies dotfiles and system configurations from local machine into root/
-├── CopyToLocal.sh         # Restores dotfiles and system configurations from root/ to local machine
-├── PathLists.txt          # Manifest listing all files and directories managed by the scripts
-├── packages_manual.txt    # List of manually installed APT packages for rapid bootstrapping
+UbuntuBSPWM/ (Branch: VoidLinux)
+├── CopyFromLocal.sh       # Copies dotfiles & system configs into root/, auto-dumps PackagesManual.txt
+├── CopyToLocal.sh         # Restores configs from root/ to host & prompts to install PackagesManual.txt
+├── PathLists.txt          # Manifest listing all managed dotfiles and system configurations
+├── PackagesManual.txt     # List of manually installed XBPS packages (xbps-query -m)
 ├── readme.md              # Project documentation and keybindings guide
 ├── .gitignore             # Ignore rules for transient caches, runtime locks, and geometry files
 └── root/                  # Mirrored root filesystem tree storing configuration backups
-    ├── etc/               # System configurations (ACPI, logind, X11 touchpad)
-    │   ├── acpi/
-    │   ├── systemd/
-    │   └── X11/xorg.conf.d/
+    ├── etc/               # System configurations (ACPI, elogind, X11 touchpad)
+    │   ├── acpi/          # ACPI event handlers
+    │   ├── elogind/       # Void Linux elogind power & lid-switch config (logind.conf)
+    │   └── X11/xorg.conf.d/ # Touchpad libinput configuration (30-touchpad.conf)
     ├── home/
     │   └── fus/           # User configuration directory (bspwm, polybar, rofi, dunst, etc.)
-    │       ├── .cargo/bin/
-    │       ├── .config/
-    │       └── .zshrc
-    └── usr/local/bin/     # Custom helper binaries (betterlockscreen, skippy-xd, howdy)
+    │       ├── .cargo/bin/ # User cargo binaries (xidlehook)
+    │       ├── .config/   # App configs (bspwm, gtk-3.0, polybar, rofi, dunst, fcitx5, copyq, etc.)
+    │       ├── .fus/      # Custom shell aliases & utilities (UserAlias.sh, ShellUtils.sh)
+    │       ├── .icons/    # Default cursor theme pointer
+    │       ├── .xinitrc   # Xorg startup script
+    │       ├── .Xresources # X11 cursor theme and resource definitions
+    │       ├── .xsettingsd # GTK theme and font daemon settings
+    │       └── .zshrc     # Zsh shell configuration
+    └── usr/local/bin/     # Custom helper binaries (betterlockscreen, skippy-xd)
 ```
 
 ---
 
 ## 🚀 Quick Start Guide
 
-Setting up a fresh Ubuntu machine with this configuration:
+Setting up a fresh Void Linux machine with this configuration:
 
-### 1. Install Dependencies & Packages
+### 1. Clone Repository & Restore Configurations
 
-Clone the repository and install all required packages listed in `packages_manual.txt`:
+Clone the repository and deploy configurations to local system:
 
 ```bash
-git clone https://github.com/ngxx-fus/UbuntuBSPWM.git
+git clone -b VoidLinux https://github.com/ngxx-fus/UbuntuBSPWM.git
 cd UbuntuBSPWM
 
-# Update package lists
-sudo apt update
-
-# Install all APT packages from the manifest
-xargs -a packages_manual.txt sudo apt install -y
-```
-
-### 2. Deploy Configurations (Restore to Local)
-
-Deploy configurations from `root/` directly to your local user home and system directories:
-
-```bash
-# Preview what will be restored without writing files
+# Preview restore operations (safe dry-run)
 ./CopyToLocal.sh --dry-run
 
-# Run interactive restore (prompts per item: y/n/a/q)
+# Interactive restore (restores files and prompts to install PackagesManual.txt)
 ./CopyToLocal.sh
 
-# Or restore everything automatically without confirmation prompts
+# Or restore everything automatically and install packages non-interactively
 ./CopyToLocal.sh --yes
 ```
 
 > [!NOTE]
 > `CopyToLocal.sh` automatically adapts user home paths across different usernames (e.g. if the repo backup was taken by user `fus`, it will restore seamlessly into `/home/<your-user>/` with proper ownership).
 
+### 2. Install Packages via PackagesManual.txt
+
+If you chose to skip package installation during `./CopyToLocal.sh`, you can manually install the full package list at any time:
+
+```bash
+# Update repository database
+sudo xbps-install -Syu
+
+# Install all packages from the manifest
+xargs -a PackagesManual.txt sudo xbps-install -y
+```
+
 ### 3. Start / Reload BSPWM
 
-Log out of your current desktop session, select **bspwm** from your display manager (GDM/LightDM/SDDM), and log in.
+Start your X11 graphical session directly from TTY:
+
+```bash
+startx
+```
 
 If already running bspwm, reload configurations instantly:
+
 ```bash
 # Reload sxhkd hotkeys
 pkill -USR1 -x sxhkd
@@ -122,7 +133,7 @@ The repository includes two scripts designed for daily workflow and machine sync
 
 ### CopyFromLocal (Backup Host -> Repo)
 
-Use `CopyFromLocal.sh` when you have customized your local configuration files and want to capture the changes into the Git repository:
+Use `CopyFromLocal.sh` when you have customized local configurations and want to save changes into the Git repository:
 
 ```bash
 # Preview changes before copying
@@ -131,28 +142,34 @@ Use `CopyFromLocal.sh` when you have customized your local configuration files a
 # Interactive backup
 ./CopyFromLocal.sh
 
-# Non-interactive backup (copies all items)
+# Non-interactive backup (copies all items and updates PackagesManual.txt)
 ./CopyFromLocal.sh --yes
 ```
 
-**Key Enhancements in `CopyFromLocal.sh`:**
+**Key Features in `CopyFromLocal.sh`:**
+- **Automatic Package Manifest Export:** Dumps all manually installed packages via `xbps-query -m > PackagesManual.txt` on every backup run, ensuring your package dependencies remain perfectly synced with your dotfiles.
 - **Auto-pruning:** Automatically skips or prunes runtime lockfiles (`*.lock`, `.*.lock`), transient CopyQ clipboard databases (`copyq_tab_*.dat`), and window geometry states so runtime junk never enters version control.
 - **Permission Normalization:** Automatically adjusts ownership of system files in `root/` to your current user so `git status`, `git diff`, and `git commit` run smoothly without requiring `sudo`.
+- **Dynamic Sudo Check:** Probes file readability first and only asks for `sudo` elevation if a file or directory is truly restricted.
 - **Cross-directory execution:** Resolves its own path dynamically; can be invoked from any working directory.
 
-### CopyToLocal (Restore Repo -> Host)
+### CopyToLocal (Restore Repo -> Host + Auto Package Install)
 
 Use `CopyToLocal.sh` to apply repository configurations onto the local system:
 
 ```bash
-# Interactive restore
+# Interactive restore (prompts per item and asks to install PackagesManual.txt)
 ./CopyToLocal.sh
 
-# Auto-confirm all items
+# Auto-confirm all items and install packages
 ./CopyToLocal.sh --yes
+
+# Restore dotfiles but skip package installation
+./CopyToLocal.sh --skip-packages
 ```
 
-**Key Enhancements in `CopyToLocal.sh`:**
+**Key Features in `CopyToLocal.sh`:**
+- **Interactive Package Installation:** Automatically detects `PackagesManual.txt` and prompts the user `Do you want to install packages from PackagesManual.txt? [y/n/a/q]`.
 - **Non-destructive Directory Sync:** Updates repository-managed configuration files while preserving any unmanaged local user files.
 - **Cross-User Home Mapping:** Automatically detects user folders in `root/home/` and restores into the current user's `$HOME`.
 - **System Integrity:** Sets `root:root` ownership on system files (`/etc/`, `/usr/`) and `$USER:$USER` on home files (`$HOME`).
@@ -166,6 +183,7 @@ Both scripts support the following command-line flags:
 | :--- | :--- | :--- |
 | `-y` | `--yes`, `-a`, `--all` | Run non-interactively; automatically confirm all operations |
 | `-n` | `--dry-run` | Preview operations without creating or modifying any files |
+| — | `--skip-packages` | *(CopyToLocal only)* Skip installing packages from `PackagesManual.txt` |
 | `-h` | `--help` | Display usage instructions and options |
 
 During interactive execution, each item prompts for confirmation:
@@ -176,9 +194,10 @@ During interactive execution, each item prompts for confirmation:
 
 ### Managing PathLists.txt
 
-`PathLists.txt` defines what files and directories are synchronized. Lines can be paths relative to `~` or absolute paths:
+[`PathLists.txt`](file:///home/fus/.fus/UbuntuBSPWM/PathLists.txt) defines what files and directories are synchronized:
 
 ```text
+# User configurations ($HOME)
 /home/fus/.config/bspwm/
 /home/fus/.config/gtk-3.0/
 /home/fus/.config/fcitx5/
@@ -191,13 +210,20 @@ During interactive execution, each item prompts for confirmation:
 /home/fus/.config/polybar/
 /home/fus/.config/dunst/
 /home/fus/.zshrc
+/home/fus/.xinitrc
+/home/fus/.xsettingsd
+/home/fus/.Xresources
+/home/fus/.icons/default/index.theme
+/home/fus/.fus/UserAlias.sh
+/home/fus/.fus/ShellUtils.sh
+/home/fus/.cargo/bin/xidlehook
+
+# System configurations & helper binaries (/etc, /usr)
 /etc/X11/xorg.conf.d/
-/etc/systemd/logind.conf
+/etc/elogind/logind.conf
 /etc/acpi/
 /usr/local/bin/skippy-xd
 /usr/local/bin/betterlockscreen
-/usr/local/bin/howdy
-/home/fus/.cargo/bin/xidlehook
 ```
 
 - Trailing slashes indicate directories (e.g., `~/.config/bspwm/`).
@@ -221,16 +247,12 @@ During interactive execution, each item prompts for confirmation:
 ├── dunst/                       # Notification daemon configuration
 │   └── dunstrc
 │
-├── obmenu/                      # Application menu generator schema
-│   └── schema.pl
-│
-├── picom/                       # X11 compositor (opacity, shadows, fading)
+├── picom/                       # X11 compositor (opacity, shadows, fading, rounded corners)
 │   └── picom.conf
 │
 ├── polybar/                     # Modular status bar
 │   ├── config.ini               # Module definitions and layout
-│   ├── colors.ini               # Theme color palette
-│   └── ibus-toggle.sh           # Input toggle script
+│   └── colors.ini               # Theme color palette
 │
 ├── rofi/                        # Application launcher & modal menus
 │   ├── config.rasi              # Universe launcher configuration
@@ -239,15 +261,17 @@ During interactive execution, each item prompts for confirmation:
 │   ├── controlpanel.rasi        # System control panel theme
 │   ├── keybinds.rasi            # Keybindings cheat sheet popup
 │   ├── popup.rasi               # Shared popup modal theme
+│   ├── popup1.rasi              # Secondary popup modal theme
 │   └── power.rasi               # Power session menu theme
 │
 ├── scripts/                     # Helper & automation scripts
 │   ├── Helper-ChangeBrightness  # Display brightness control with Dunst OSD
 │   ├── Helper-ChangeKeyboardBrightness # Keyboard backlight control with Dunst OSD
 │   ├── Helper-ChangeVolume      # PulseAudio/ALSA volume control with Dunst OSD
+│   ├── Helper-CpuTemp           # Polybar CPU temperature module helper
 │   ├── Helper-DisplaySwitching  # Multi-monitor switcher (PC only, Clone, Extend, External)
 │   ├── Helper-Help              # Displays keybinding cheat sheet via Rofi
-│   ├── Helper-Power             # Session controls (Power off, Reboot, Suspend, Lock)
+│   ├── Helper-Power             # Session controls (Power off, Reboot, Suspend, Lock via elogind)
 │   ├── Helper-ToggleTouchpad    # Enables / disables touchpad on demand
 │   ├── Service-Background       # Desktop wallpaper manager
 │   ├── Service-Polybar          # Polybar lifecycle launcher
@@ -271,7 +295,7 @@ Modifier Key: **`Super`** (Windows key).
 ### 🖥️ Applications & Utilities
 | Shortcut | Action | Command / Target |
 | :--- | :--- | :--- |
-| `Super + Enter` / `Super + r` | Open Terminal | `gnome-terminal` / `alacritty` |
+| `Super + Enter` / `Super + r` | Open Terminal | `alacritty` |
 | `Alt + Space` | Application Launcher (Universe) | `rofi -show combi` |
 | `Super + e` | File Manager | `thunar` |
 | `Super + v` | Clipboard History Manager | `copyq toggle` |
@@ -280,7 +304,7 @@ Modifier Key: **`Super`** (Windows key).
 | `Alt + Tab` / `Alt + Shift + Tab` | Focus next / previous window | `bspc node -f next/prev.local.!hidden.window` |
 | `Super + Space` | Toggle Input Method | `fcitx5` |
 | `Super + p` | Display Switching Menu | Multi-monitor profile menu |
-| `Super + x` | Power & Session Menu | Shutdown, Reboot, Suspend, Lock |
+| `Super + x` | Power & Session Menu | Shutdown, Reboot, Suspend, Lock (elogind) |
 | `Super + /` | Hotkey Cheat Sheet | Visual keybindings help |
 | `Super + Esc` | Reload Hotkeys | Reload `sxhkd` configuration |
 
@@ -323,18 +347,23 @@ Modifier Key: **`Super`** (Windows key).
 
 ---
 
-## 🛠️ Key Components & Integrations
+## 🛠️ Key Components & Void Linux Architecture
 
-- **Window Management**: `bspwm` organizes windows into a binary tree structure. `sxhkd` handles hotkey interception.
-- **Notification Daemon**: `dunst` configured with custom themes and visual progress bars for brightness and volume changes.
-- **Compositor**: `picom` provides dual-kawase blur, soft drop shadows, and subtle window transitions.
-- **Power & Sleep Management**:
-  - `/etc/systemd/logind.conf` handles lid switch behavior (ignoring lid close on external displays).
-  - `/etc/acpi/` handles custom ACPI events.
-  - `xidlehook` dims screen before auto-locking via `betterlockscreen`.
+- **Init System & Daemons**:
+  - **`runit`**: Void's fast and lightweight init system and service supervision (`/var/service/`).
+  - **`elogind`**: Replaces `systemd-logind` for power and session control. Commands like `loginctl suspend`, `loginctl reboot`, and `loginctl poweroff` are used in [`Helper-Power`](file:///home/fus/.config/bspwm/scripts/Helper-Power) and [`betterlockscreen`](file:///usr/local/bin/betterlockscreen).
+  - `/etc/elogind/logind.conf` handles lid switch behavior (ignoring lid close on external displays).
+- **Audio & Media**:
+  - Full PipeWire stack (`pipewire`, `wireplumber`, `pipewire-pulse`) managed cleanly via user runtime.
+- **Window Management & Hotkeys**:
+  - `bspwm` arranges windows in a binary space partition tree.
+  - `sxhkd` intercepts X11 keyboard events.
 - **Touchpad Experience**:
   - `touchegg` enables multi-finger gestures (swipe up for window exposé, swipe left/right for workspaces).
-  - `/etc/X11/xorg.conf.d/30-touchpad.conf` enables natural scrolling, tap-to-click, and palm detection.
+  - `/etc/X11/xorg.conf.d/30-touchpad.conf` configures natural scrolling, tap-to-click, and palm detection via `libinput`.
+- **GTK Context Menus & Visuals**:
+  - `~/.config/gtk-3.0/gtk.css` combined with `picom.conf` eliminates the 24-bit black corner artifact on non-CSD menus in tiling window managers.
+  - `~/.xsettingsd` provides theme and icon definitions to GTK applications without requiring GNOME Settings Daemon.
 
 ---
 
@@ -344,4 +373,8 @@ Modifier Key: **`Super`** (Windows key).
 - **Root vs User Permissions**:
   - Configuration files copied to `$HOME` are set to `$USER:$USER`.
   - System files copied to `/etc/` or `/usr/` are restored as `root:root`.
-  - When backing up to `root/`, all files are normalized to user ownership to enable normal Git operations.
+  - When backing up to `root/`, all files are normalized to user ownership to enable normal Git operations without needing `sudo`.
+
+## Demo 
+
+![Demo](imgs/Demo.png)

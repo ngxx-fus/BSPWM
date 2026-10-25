@@ -9,7 +9,13 @@ set -eo pipefail
 
 # SCRIPT DIRECTORY & CONFIG ####################################
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-LIST_PATHS="${SCRIPT_DIR}/PathLists.txt"
+if [ -f "${SCRIPT_DIR}/PathLists.txt" ]; then
+    LIST_PATHS="${SCRIPT_DIR}/PathLists.txt"
+elif [ -f "${SCRIPT_DIR}/PathList.txt" ]; then
+    LIST_PATHS="${SCRIPT_DIR}/PathList.txt"
+else
+    LIST_PATHS="${SCRIPT_DIR}/PathLists.txt"
+fi
 DIR_ROOT="${SCRIPT_DIR}/root"
 
 CONFIRM_ALL=0
@@ -110,23 +116,32 @@ if [ ! -f "$LIST_PATHS" ]; then
     exit 1
 fi
 
-# Check if any system paths (outside /home or ~) are present in PathLists.txt
-has_system_paths=0
+# Check if any system paths require sudo (unreadable by current user)
+requires_sudo=0
 while IFS= read -r line || [ -n "$line" ]; do
     line="$(echo "$line" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
     if [[ -z "$line" || "$line" == \#* ]]; then
         continue
     fi
-    if [[ "$line" != \~* && "$line" != /home/* ]]; then
-        has_system_paths=1
+    if [[ "$line" == \~/* ]]; then
+        check_p="${HOME}/${line#\~/}"
+    elif [[ "$line" == /home/*/* ]]; then
+        sub_p="${line#/home/}"
+        check_p="${HOME}/${sub_p#*/}"
+    else
+        check_p="$line"
+    fi
+    check_p="${check_p%/}"
+    if [ -e "$check_p" ] && [ ! -r "$check_p" ]; then
+        requires_sudo=1
         break
     fi
 done < "$LIST_PATHS"
 
-# Prompt for sudo only if required by system paths
-if [ $has_system_paths -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
+# Prompt for sudo only if unreadable paths require elevated permissions
+if [ $requires_sudo -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
     if ! sudo -n true 2>/dev/null; then
-        echo "[!] Sudo credential is required to access system paths (e.g., /etc/, /usr/)."
+        echo "[!] Sudo credential is required to access restricted paths."
         sudo -v
     fi
 fi
@@ -185,10 +200,10 @@ while IFS= read -r raw_line || [ -n "$raw_line" ]; do
     is_dir=0
     target_type="file"
 
-    if [ -d "$src_local_path" ] || sudo test -d "$src_local_path" 2>/dev/null; then
+    if [ -d "$src_local_path" ] || { [ "$DRY_RUN" -eq 0 ] && sudo -n test -d "$src_local_path" 2>/dev/null; }; then
         is_dir=1
         target_type="folder"
-    elif [ -e "$src_local_path" ] || [ -L "$src_local_path" ] || sudo test -e "$src_local_path" 2>/dev/null || sudo test -L "$src_local_path" 2>/dev/null; then
+    elif [ -e "$src_local_path" ] || [ -L "$src_local_path" ] || { [ "$DRY_RUN" -eq 0 ] && sudo -n test -e "$src_local_path" 2>/dev/null; }; then
         is_dir=0
         target_type="file"
     else
@@ -296,7 +311,19 @@ done < "$LIST_PATHS"
 
 # Guarantee all backup files in DIR_ROOT remain user-owned for Git management
 if [ "$DRY_RUN" -eq 0 ] && [ -d "$DIR_ROOT" ]; then
-    sudo chown -R "${USER}:${USER}" "$DIR_ROOT" 2>/dev/null || chown -R "${USER}:${USER}" "$DIR_ROOT" 2>/dev/null || true
+    chown -R "${USER}:${USER}" "$DIR_ROOT" 2>/dev/null || sudo -n chown -R "${USER}:${USER}" "$DIR_ROOT" 2>/dev/null || true
+fi
+
+# Export manually installed packages (Void Linux xbps)
+if [ "$DRY_RUN" -eq 1 ]; then
+    echo "----------------------------------------------------------"
+    echo "[DRY-RUN] Would export manual packages: xbps-query -m > PackagesManual.txt"
+else
+    if command -v xbps-query >/dev/null 2>&1; then
+        echo "----------------------------------------------------------"
+        xbps-query -m > "${SCRIPT_DIR}/PackagesManual.txt"
+        echo "[+] Successfully exported manual packages to PackagesManual.txt"
+    fi
 fi
 
 echo "=========================================================="

@@ -73,7 +73,8 @@ ZSH_THEME="ngxxfus"
 # Custom plugins may be added to $ZSH_CUSTOM/plugins/
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
-plugins=(git zsh-syntax-highlighting zsh-autosuggestions zsh-z)
+# plugins=(git)
+plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
 
 source $ZSH/oh-my-zsh.sh
 
@@ -105,5 +106,6 @@ source $ZSH/oh-my-zsh.sh
 # Example aliases
 # alias zshconfig="mate ~/.zshrc"
 # alias ohmyzsh="mate ~/.oh-my-zsh"
-# User aliases
-source /home/fus/.fus/user_aliases.sh
+source "/home/fus/.fus/UserAlias.sh"
+source /home/fus/.fus/ShellUtils.sh
+. "$HOME/.local/bin/env"

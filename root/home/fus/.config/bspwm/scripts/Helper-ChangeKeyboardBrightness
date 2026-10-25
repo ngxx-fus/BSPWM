@@ -1,13 +1,20 @@
 #!/bin/bash
 
 # change_keyboard_brightlight - keyboard backlight control with Dunst progress bar
-# Usage: change_keyboard_brightlight {up|down}
+# Usage: change_keyboard_brightlight [up|down]
 
 DEVICE=$(brightnessctl --list | grep -m1 "kbd_backlight" | awk -F"'" '{print $2}')
+
+# Fallback to default pattern if no specific device is found
 [ -z "$DEVICE" ] && DEVICE="*::kbd_backlight"
 
 STEP=1
 
+# Retrieve the current absolute brightness and the maximum limit
+CUR=$(brightnessctl -d "$DEVICE" get 2>/dev/null || echo 0)
+MAX=$(brightnessctl -d "$DEVICE" max 2>/dev/null || echo 1)
+
+# Retrieve and display current keyboard brightness via notify-send
 notify_kbd() {
     local percent
     percent=$(brightnessctl -d "$DEVICE" info | awk -F'[()]' '/Current brightness/ {gsub("%","",$2); print $2}')
@@ -20,17 +27,37 @@ notify_kbd() {
         "Keyboard Light ${percent}%"
 }
 
+# Determine cyclic target or notification state based on argument
 case "$1" in
     up)
-        brightnessctl -d "$DEVICE" set "+$STEP" >/dev/null 2>&1
+        # Cycle back to 0 if exceeding MAX
+        NEXT=$(( (CUR + STEP) % (MAX + 1) ))
+        brightnessctl -d "$DEVICE" set "$NEXT" >/dev/null 2>&1
         notify_kbd
+        
+        # Exit script successfully after handling up state
+        exit 0
         ;;
     down)
-        brightnessctl -d "$DEVICE" set "${STEP}-" >/dev/null 2>&1
+        # Cycle to MAX if dropping below 0
+        NEXT=$(( (CUR - STEP + MAX + 1) % (MAX + 1) ))
+        brightnessctl -d "$DEVICE" set "$NEXT" >/dev/null 2>&1
         notify_kbd
+        
+        # Exit script successfully after handling down state
+        exit 0
+        ;;
+    "")
+        # Trigger notification only when no argument is provided
+        notify_kbd
+        
+        # Exit script successfully
+        exit 0
         ;;
     *)
-        echo "Usage: $0 {up|down}" >&2
+        echo "Usage: $0 [up|down]" >&2
+        
+        # Exit script with error for invalid arguments
         exit 1
         ;;
 esac

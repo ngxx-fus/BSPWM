@@ -10,23 +10,51 @@ PID_FILE="/tmp/background_slideshow.pid"
 
 NO_LOCKSCREEN_RENDER=$1
 
-# Terminate existing instance if already running
+# Terminate existing instance(s) if already running
 if [[ -f "$PID_FILE" ]]; then
-    old_pid=$(cat "$PID_FILE")
-    # Verify if old process is still active
-    if kill -0 "$old_pid" 2>/dev/null; then
+    old_pid=$(cat "$PID_FILE" 2>/dev/null)
+    if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
         echo "[*] Killing previous background process (${old_pid})..."
+        pkill -P "$old_pid" 2>/dev/null || true
         kill "$old_pid" 2>/dev/null || true
     fi
-    # Remove stale PID file
     rm -f "$PID_FILE"
 fi
+
+# Also clean up any leaked/orphaned Service-Background instances whose PID_FILE was lost
+for pid in $(pgrep -f "/scripts/Service-Background" 2>/dev/null); do
+    if [[ "$pid" != "$$" && "$pid" != "$PPID" ]]; then
+        pkill -P "$pid" 2>/dev/null || true
+        kill "$pid" 2>/dev/null || true
+    fi
+done
 
 # Register current process PID
 echo "$$" > "$PID_FILE"
 
-# Clean up PID file on exit or termination signals
-trap 'rm -f "$PID_FILE"; exit 0' INT TERM EXIT
+SLEEP_PID=""
+RENDER_PID=""
+
+cleanup() {
+    [[ -n "$SLEEP_PID" ]] && kill "$SLEEP_PID" 2>/dev/null || true
+    [[ -n "$RENDER_PID" ]] && kill "$RENDER_PID" 2>/dev/null || true
+    pkill -P "$$" 2>/dev/null || true
+    if [[ -f "$PID_FILE" ]] && [[ "$(cat "$PID_FILE" 2>/dev/null)" == "$$" ]]; then
+        rm -f "$PID_FILE"
+    fi
+    exit 0
+}
+
+# Clean up PID file and child processes on exit or termination signals
+trap cleanup INT TERM EXIT
+
+# Interruptible sleep so SIGTERM is handled immediately instead of waiting for sleep to finish
+WaitInterval() {
+    sleep "$1" &
+    SLEEP_PID=$!
+    wait "$SLEEP_PID" 2>/dev/null || true
+    SLEEP_PID=""
+}
 
 DIR_BACKGROUND_IMGS="${HOME}/.config/bspwm/wallpaper/Blao"
 FILE_BACKGROUND_IMG="${HOME}/Pictures/Wallpapers/default.png"
@@ -61,21 +89,31 @@ SetWallpaper() {
         return 1
     fi
 
-    # Check if lockscreen rendering is enabled (defaulting to 0 if unset)
+    # 1. Apply wallpaper FIRST while GPU/CPU/X11 are idle (avoid concurrent contention)
+    /usr/bin/feh --no-fehbg --bg-fill "$target_img"
+    echo "[+] Applied wallpaper: ${target_img}"
+
+    # 2. Check if lockscreen rendering is enabled (defaulting to 0 if unset)
     if [ "${NO_LOCKSCREEN_RENDER:-0}" -ne 1 ]; then
-        # Cache and generate blurred lockscreen assets in background to prevent blocking
+        # Cancel any previous unfinished lockscreen render job
+        if [[ -n "$RENDER_PID" ]] && kill -0 "$RENDER_PID" 2>/dev/null; then
+            pkill -P "$RENDER_PID" 2>/dev/null || true
+            kill "$RENDER_PID" 2>/dev/null || true
+        fi
+
+        # Render ONLY 'blur' effect (skipping 5 unused effects), with OpenCL disabled
+        # (MAGICK_OCL_DEVICE=OFF prevents Intel iGPU stalls/black flashes in picom/Xorg)
+        # and low CPU/IO priority so GUI remains completely smooth.
         (
-            /usr/local/bin/betterlockscreen -u "$target_img" > /dev/null 2>&1
+            MAGICK_OCL_DEVICE=OFF MAGICK_THREAD_LIMIT=2 \
+                nice -n 19 /usr/local/bin/betterlockscreen -u "$target_img" --fx blur > /dev/null 2>&1
             echo "[+] Applied blur-lockscreen: ${target_img}"
         ) &
+        RENDER_PID=$!
     fi
 
     # No lock screen render is only able to skip one time
     unset NO_LOCKSCREEN_RENDER
-    
-    # Apply wallpaper using feh fill mode
-    /usr/bin/feh --bg-fill "$target_img"
-    echo "[+] Applied wallpaper: ${target_img}"
 
     # Return success
     return 0
@@ -94,6 +132,7 @@ if [[ $CONF_INPUTDIR_EN -eq 0 ]]; then
 
     # Apply static wallpaper directly
     SetWallpaper "$target_file"
+    [[ -n "$RENDER_PID" ]] && wait "$RENDER_PID" 2>/dev/null || true
     # End execution for static mode
     exit 0
 fi
@@ -112,6 +151,8 @@ echo "=========================================================="
 echo " Mode: Directory Slideshow (${target_dir})"
 echo " Interval: ${CONF_INTERVAL}s | Random: ${CONF_RANDOM_EN}"
 echo "=========================================================="
+
+last_selected_img=""
 
 # Infinite loop for background wallpaper switching
 while true; do
@@ -132,20 +173,25 @@ while true; do
 
     # Select image based on configuration
     if [[ $CONF_RANDOM_EN -eq 1 ]]; then
-        # Pick random index (zsh arrays are 1-indexed)
+        # Pick random index (avoid picking the exact same wallpaper twice in a row when >1 image)
         rand_idx=$(( (RANDOM % total_imgs) + 1 ))
         selected_img="${image_list[$rand_idx]}"
+        if (( total_imgs > 1 )) && [[ "$selected_img" == "$last_selected_img" ]]; then
+            rand_idx=$(( (rand_idx % total_imgs) + 1 ))
+            selected_img="${image_list[$rand_idx]}"
+        fi
+        last_selected_img="$selected_img"
         SetWallpaper "$selected_img"
     else
         # Loop sequentially through all found images
         for selected_img in "${image_list[@]}"; do
             SetWallpaper "$selected_img"
-            sleep "$CONF_INTERVAL"
+            WaitInterval "$CONF_INTERVAL"
         done
         # Restart loop after completing sequence
         continue
     fi
 
     # Wait for the next rotation cycle
-    sleep "$CONF_INTERVAL"
+    WaitInterval "$CONF_INTERVAL"
 done

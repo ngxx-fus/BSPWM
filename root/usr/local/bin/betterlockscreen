@@ -20,7 +20,7 @@ init_config () {
     description=""
     quiet=false
     i3lockcolor_bin="i3lock-color"
-    suspend_command="systemctl suspend"
+    suspend_command="loginctl suspend"
     convert_command="magick"
     composite_command="magick composite"
 

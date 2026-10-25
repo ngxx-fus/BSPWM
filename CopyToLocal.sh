@@ -9,11 +9,18 @@ set -eo pipefail
 
 # SCRIPT DIRECTORY & CONFIG ####################################
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-LIST_PATHS="${SCRIPT_DIR}/PathLists.txt"
+if [ -f "${SCRIPT_DIR}/PathLists.txt" ]; then
+    LIST_PATHS="${SCRIPT_DIR}/PathLists.txt"
+elif [ -f "${SCRIPT_DIR}/PathList.txt" ]; then
+    LIST_PATHS="${SCRIPT_DIR}/PathList.txt"
+else
+    LIST_PATHS="${SCRIPT_DIR}/PathLists.txt"
+fi
 DIR_ROOT="${SCRIPT_DIR}/root"
 
 CONFIRM_ALL=0
 DRY_RUN=0
+SKIP_PACKAGES=0
 
 # CLI OPTIONS #################################################
 PrintUsage() {
@@ -25,6 +32,7 @@ Restore dotfiles and system configurations from '${DIR_ROOT}' to the local syste
 Options:
   -y, --yes, -a, --all    Confirm all restore operations automatically (non-interactive)
   -n, --dry-run           Preview actions without copying or writing any files
+  --skip-packages         Skip installing packages from PackagesManual.txt
   -h, --help              Display this help message and exit
 
 Interactive Choices:
@@ -42,6 +50,9 @@ for arg in "$@"; do
             ;;
         -n|--dry-run)
             DRY_RUN=1
+            ;;
+        --skip-packages)
+            SKIP_PACKAGES=1
             ;;
         -h|--help)
             PrintUsage
@@ -190,10 +201,10 @@ while IFS= read -r raw_line || [ -n "$raw_line" ]; do
     is_dir=0
     target_type="file"
 
-    if [ -d "$src_root_path" ] || sudo test -d "$src_root_path" 2>/dev/null; then
+    if [ -d "$src_root_path" ] || { [ "$DRY_RUN" -eq 0 ] && sudo -n test -d "$src_root_path" 2>/dev/null; }; then
         is_dir=1
         target_type="folder"
-    elif [ -e "$src_root_path" ] || [ -L "$src_root_path" ] || sudo test -e "$src_root_path" 2>/dev/null || sudo test -L "$src_root_path" 2>/dev/null; then
+    elif [ -e "$src_root_path" ] || [ -L "$src_root_path" ] || { [ "$DRY_RUN" -eq 0 ] && sudo -n test -e "$src_root_path" 2>/dev/null; }; then
         is_dir=0
         target_type="file"
     else
@@ -316,3 +327,41 @@ if [ $failed_items -gt 0 ]; then
     echo "   Failed          : ${failed_items}"
 fi
 echo "=========================================================="
+
+# PACKAGE INSTALLATION PROMPT #################################
+PKG_LIST_FILE="${SCRIPT_DIR}/PackagesManual.txt"
+if [ "$SKIP_PACKAGES" -eq 0 ] && [ -f "$PKG_LIST_FILE" ] && command -v xbps-install >/dev/null 2>&1; then
+    echo ""
+    echo "=========================================================="
+    echo " Package Installation Check ($(basename "$PKG_LIST_FILE"))"
+    echo "=========================================================="
+    install_pkgs=0
+
+    if [ $CONFIRM_ALL -eq 1 ]; then
+        install_pkgs=1
+    else
+        ret_pkg=0
+        if UserConfirmYNA "Do you want to install packages from $(basename "$PKG_LIST_FILE")?"; then
+            ret_pkg=0
+        else
+            ret_pkg=$?
+        fi
+
+        if [ $ret_pkg -eq 0 ] || [ $ret_pkg -eq 2 ]; then
+            install_pkgs=1
+        fi
+    fi
+
+    if [ $install_pkgs -eq 1 ]; then
+        if [ "$DRY_RUN" -eq 1 ]; then
+            echo "[DRY-RUN] Would run: xargs -a \"$PKG_LIST_FILE\" sudo xbps-install -Sy"
+        else
+            echo "[*] Synchronizing XBPS database and installing packages..."
+            xargs -a "$PKG_LIST_FILE" sudo xbps-install -Sy || {
+                echo "[-] Warning: Some packages might have encountered errors during installation."
+            }
+        fi
+    else
+        echo "[*] Package installation skipped by user."
+    fi
+fi

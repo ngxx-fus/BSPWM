@@ -1,3 +1,8 @@
+# ==============================================================================
+# PathLists.txt - Managed Dotfiles & System Configurations for Void Linux
+# ==============================================================================
+
+# User configurations ($HOME)
 /home/fus/.config/bspwm/
 /home/fus/.config/gtk-3.0/
 /home/fus/.config/fcitx5/
@@ -10,10 +15,17 @@
 /home/fus/.config/polybar/
 /home/fus/.config/dunst/
 /home/fus/.zshrc
+/home/fus/.xinitrc
+/home/fus/.xsettingsd
+/home/fus/.Xresources
+/home/fus/.icons/default/index.theme
+/home/fus/.fus/UserAlias.sh
+/home/fus/.fus/ShellUtils.sh
+/home/fus/.cargo/bin/xidlehook
+
+# System configurations & helper binaries (/etc, /usr)
 /etc/X11/xorg.conf.d/
-/etc/systemd/logind.conf
+/etc/elogind/logind.conf
 /etc/acpi/
 /usr/local/bin/skippy-xd
 /usr/local/bin/betterlockscreen
-/usr/local/bin/howdy
-/home/fus/.cargo/bin/xidlehook

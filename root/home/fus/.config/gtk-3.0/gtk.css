@@ -1,0 +1,13 @@
+/* Fix black corners on GTK3 popup/context menus in bspwm (24-bit non-CSD popup windows) */
+.popup.background,
+window.background.popup:not(.csd),
+.background.popup:not(.csd) > decoration {
+    background-color: #333333;
+    border-radius: 8px;
+}
+
+.background.popup:not(.csd) > menu,
+window.background.popup:not(.csd) > menu {
+    border-radius: 8px;
+}
+

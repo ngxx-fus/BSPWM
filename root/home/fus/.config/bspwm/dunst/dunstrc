@@ -79,7 +79,7 @@
 
 [urgency_low]
     background = "#17171c"  # THEME: dunst_bg_low
-    foreground = "#5c5c70"  # THEME: dunst_fg_low
+    foreground = "#d8d8e7"  # THEME: dunst_fg_low
     frame_color = "#60a5eb"  # THEME: dunst_frame_low
     timeout = 10
     highlight = "#9499d1"  # THEME: dunst_highlight_low

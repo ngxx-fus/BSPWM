@@ -16,7 +16,7 @@ window:
 
   dynamic_padding: true
   decorations: none
-  opacity: 0.95
+  opacity: 0.80
   title: "Alacritty"
   class:
     general: "Alacritty"

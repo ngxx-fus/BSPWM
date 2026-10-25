@@ -1,0 +1,62 @@
+# ==============================================================================
+# Git Ignore Rules for UbuntuBSPWM Dotfiles & Backup Repository
+# ==============================================================================
+
+# OS & Filesystem Metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+*.directory
+
+# IDE & Editor Configurations
+.vscode/*
+!.vscode/settings.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Temporary, Backup & Swap Files
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+*.orig
+*.rej
+
+# Runtime Lockfiles, Sockets, and PIDs
+*.lock
+.*.lock
+*.sock
+*.pid
+
+# Application & System Logs
+*.log
+*.log.*
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+
+# Accidental / Stray Build & Test Directories
+/home/
+/tmp/
+
+# CopyQ Transient Data & Geometry
+**/copyq/copyq_tab_*.dat
+**/copyq/copyq_geometry.ini
+**/copyq/copyq_geometry.ini.lock
+**/copyq/*.lock
+**/copyq/*.log*
+
+# Touchégg Runtime Lockfiles
+**/touchegg/.*.lock
+**/touchegg/*.lock
+
+# BSPWM Temporary Files (preserve keepalive .gitignore)
+**/bspwm/.tmp/*
+!**/bspwm/.tmp/.gitignore
+
+# General User Cache Directories
+**/.cache/
+

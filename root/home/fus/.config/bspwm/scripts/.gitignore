@@ -1,5 +1,0 @@
-# Ignore temporary files and test output in scripts
-*.tmp
-*.log
-*~
-

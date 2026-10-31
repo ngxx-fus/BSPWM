@@ -126,6 +126,7 @@ nodejs-24.18.0_1
 noto-fonts-cjk-1_1
 noto-fonts-emoji-2.051_2
 noto-fonts-ttf-2026.10.01_1
+nvme-cli-2.16_1
 obs-32.2.2_1
 openblas-devel-0.3.34_1
 pam-devel-1.5.3_4
@@ -149,6 +150,7 @@ qt6-base-devel-6.11.2_1
 qt6-declarative-devel-6.11.2_1
 qt6-shadertools-devel-6.11.2_1
 qt6ct-0.11_4
+remmina-1.4.43_1
 ripgrep-15.2.0_1
 rofi-2.0.0_1
 sassc-3.6.2_2

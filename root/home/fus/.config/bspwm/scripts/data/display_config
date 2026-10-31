@@ -1,6 +1,6 @@
 # Display configuration for Helper-DisplaySwitching
-DISP/MODE=0                   # Active mode (0: PC screen only, 1: Duplicate, 2: Extend, 3: Second screen only)
-DISP/PROFILE=1                # Active Extend profile index (0, 1, 2, ...)
+DISP/MODE=2                   # Active mode (0: PC screen only, 1: Duplicate, 2: Extend, 3: Second screen only)
+DISP/PROFILE=0                # Active Extend profile index (0, 1, 2, ...)
 
 # Display infomations
 DISP/NUM=4                    # Number of listed displays
@@ -33,9 +33,9 @@ DISP/3/Primary=1
 
 PROFILE/0/DISP/NUM=2          # Profile 0: For two monitors; HDMI-1/wxh/0x0; eDP-1/wxh/0x1920
 PROFILE/0/DISP/0/PosX=0       # Leave this blank if not used/undetected
-PROFILE/0/DISP/0/PosY=1920    # Leave this blank if not used/undetected
+PROFILE/0/DISP/0/PosY=0    # Leave this blank if not used/undetected
 PROFILE/0/DISP/3/PosX=0       # Leave this blank if not used/undetected
-PROFILE/0/DISP/3/PosY=0       # Leave this blank if not used/undetected
+PROFILE/0/DISP/3/PosY=1920       # Leave this blank if not used/undetected
 
 PROFILE/1/DISP/NUM=2          # Profile 1: For two monitors; HDMI-1/wxh/0x0; DP-2/wxh/1080x0
 PROFILE/1/DISP/2/PosX=1080    # Leave this blank if not used/undetected
@@ -45,8 +45,8 @@ PROFILE/1/DISP/3/PosY=0       # Leave this blank if not used/undetected
 
 PROFILE/2/DISP/NUM=3          # Profile 2: For three monitors; HDMI-1/wxh/0x0; DP-2/wxh/1080x0; eDP-1/wxh/0x1920
 PROFILE/2/DISP/0/PosX=0       # Leave this blank if not used/undetected
-PROFILE/2/DISP/0/PosY=1920    # Leave this blank if not used/undetected
+PROFILE/2/DISP/0/PosY=0    # Leave this blank if not used/undetected
 PROFILE/2/DISP/2/PosX=1080    # Leave this blank if not used/undetected
 PROFILE/2/DISP/2/PosY=0       # Leave this blank if not used/undetected
 PROFILE/2/DISP/3/PosX=0       # Leave this blank if not used/undetected
-PROFILE/2/DISP/3/PosY=0       # Leave this blank if not used/undetected
+PROFILE/2/DISP/3/PosY=1920       # Leave this blank if not used/undetected

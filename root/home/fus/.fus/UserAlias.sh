@@ -36,7 +36,7 @@ alias tmuxAttach="tmux a -t"
 alias tmuxKill="tmux kill-session -t"
 
 
-# default editor
+# default editor ###############################################
 if command -v nvim >/dev/null 2>&1; then
     alias nano="nvim"
     alias vim="nvim"
@@ -44,6 +44,8 @@ elif command -v vim >/dev/null 2>&1; then
     alias nano="vim"
 fi
 
+
+# esp-idf ######################################################
 if [ -e /home/fus/.fus/esp/export.sh ]; then 
     alias esp-idf='. /home/fus/.fus/esp/export.sh'
     alias esp-idf-build='idf.py build'

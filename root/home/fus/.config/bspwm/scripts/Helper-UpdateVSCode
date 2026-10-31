@@ -1,0 +1,89 @@
+#!/bin/zsh
+
+###################################################################################################
+# CONFIG 
+###################################################################################################
+
+URL_DOWNLOAD="https://code.visualstudio.com/sha/download?build=stable&os=linux-x64"
+DIR_TEMP="/tmp/vscode"
+ZIP_FILE="vscode_x64_lin.tar.gz"
+DIR_EXTRACTED="VSCode-linux-x64"
+DIR_PWD="$(pwd)"
+DIR_TARGET="/opt/vscode"
+
+###################################################################################################
+# PREREQUISITES
+###################################################################################################
+
+printf "INFO: This script needs SUDO permission!\n"
+sudo printf "INFO: Permission OK!\n"
+if [[ $? != 0 ]]; then 
+    echo "ERROR: SUDO permission error!  ---> ABORTED!\n"
+    cd $DIR_PWD
+    exit -1
+fi
+
+
+SWs=( "wget" "tar")
+for sw in $SWs ; do 
+    printf "CHECK: <$sw>"
+    where $sw > /dev/null
+    if [[  $? != 0 ]]; then 
+        printf "\nERROR: Not found <$sw> in your PATH!\nABORTED!\n"
+        cd $DIR_PWD
+        exit 1
+    fi
+    printf " OK!\n"
+done
+
+rm -rf $DIR_TEMP
+
+###################################################################################################
+# DOWNLOAD ZIP FILE
+###################################################################################################
+
+mkdir -p $DIR_TEMP
+cd $DIR_TEMP
+
+printf "DOWNLOAD: <$ZIP_FILE> (It may take a while!)\n"
+echo "$(wget "$URL_DOWNLOAD" -O "$ZIP_FILE")" > /dev/null 2>&1
+if ! [ -f $ZIP_FILE ]; then 
+    printf "ERROR: Not found $ZIP_FILE after downloaded!\nABORTED!"
+    cd $DIR_PWD
+    exit 2
+fi
+
+###################################################################################################
+# EXTRACT ZIP FILE
+###################################################################################################
+
+printf "EXTRACT: $ZIP_FILE ---> $DIR_EXTRACTED\n"
+rm -rf $DIR_EXTRACTED
+tar -vxf $ZIP_FILE
+
+if ! [ -d $DIR_EXTRACTED ]; then 
+    printf "ERROR: Not found $DIR_EXTRACTED after extracted!\nABORTED!"
+    cd $DIR_PWD
+    exit 3
+fi
+
+###################################################################################################
+# INSTALL
+###################################################################################################
+
+pgrep code > /dev/null 2>&1
+if [[ $? == 0 ]] ; then
+    printf "ERROR: Found <code> is running!\nPIDs:\n$(pgrep code)\nPlease close it before update!\nABORTED!\n"
+    cd $DIR_PWD
+    exit 4
+fi
+
+printf "INSTALL: $DIR_EXTRACTED ---> $DIR_TARGET\n"
+sudo cp -vrf $DIR_EXTRACTED/. $DIR_TARGET
+if [[ $? != 0 ]] ; then
+    printf "ERROR: Error while installing <$DIR_EXTRACTED>!\nABORTED!\n"
+    cd $DIR_PWD
+    exit 5
+fi
+
+printf "DONE!\n"

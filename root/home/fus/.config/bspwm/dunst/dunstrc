@@ -12,8 +12,8 @@
     separator_height = 2
     padding = 15
     horizontal_padding = 15
-    frame_width = 3
-    frame_color = "#60a5eb"  # THEME: dunst_frame_global
+    frame_width = 1
+    frame_color = "#d1d1d1"  # THEME: dunst_frame_global
     separator_color = auto
     sort = yes
     idle_threshold = 120
@@ -34,11 +34,12 @@
     show_indicators = yes
 
     # Icons
-    icon_position = left
-    min_icon_size = 16
-    max_icon_size = 32
+    icon_theme = FusCollection, Papirus-Dark, Papirus, Adwaita
     enable_recursive_icon_lookup = true
-    icon_path = /usr/share/icons/Papirus/96x96/devices/:/usr/share/icons/Papirus/48x48/status/:/usr/share/icons/Papirus/96x96/apps/
+    icon_position = left
+    min_icon_size = 32
+    max_icon_size = 48
+    icon_path = /usr/share/icons/Papirus/96x96/devices/:/usr/share/icons/Papirus/48x48/status/:/usr/share/icons/Papirus/96x96/apps/:/home/fus/.config/bspwm/scripts/icons/FusCollection/96x96/
 
     # History
     sticky_history = yes
@@ -50,7 +51,7 @@
     always_run_script = true
     title = Dunst
     class = Dunst
-    corner_radius = 15
+    corner_radius = 10
     force_xinerama = false
 
     # Progress bar
@@ -78,22 +79,22 @@
     per_monitor_dpi = false
 
 [urgency_low]
-    background = "#17171c"  # THEME: dunst_bg_low
-    foreground = "#d8d8e7"  # THEME: dunst_fg_low
-    frame_color = "#60a5eb"  # THEME: dunst_frame_low
-    timeout = 10
-    highlight = "#9499d1"  # THEME: dunst_highlight_low
+    background  = "#38383a"  # THEME: dunst_bg_low
+    foreground  = "#ffffff"  # THEME: dunst_fg_low
+    frame_color = "#38383a"  # THEME: dunst_frame_low
+    timeout     = 10
+    highlight   = "#e9e9e9"  # THEME: dunst_highlight_low
 
 [urgency_normal]
-    background = "#17171c"  # THEME: dunst_bg_normal
-    foreground = "#d2cbbc"  # THEME: dunst_fg_normal
-    frame_color = "#60a5eb"  # THEME: dunst_frame_normal
+    background = "#38383a"  # THEME: dunst_bg_normal
+    foreground = "#ececec"  # THEME: dunst_fg_normal
+    frame_color = "#38383a"  # THEME: dunst_frame_normal
     timeout = 10
-    highlight = "#60a5eb"  # THEME: dunst_highlight_normal
+    highlight = "#e9e9e9"  # THEME: dunst_highlight_normal
 
 [urgency_critical]
-    background = "#17171c"  # THEME: dunst_bg_critical
-    foreground = "#d2cbbc"  # THEME: dunst_fg_critical
-    frame_color = "#60a5eb"  # THEME: dunst_frame_critical
+    background = "#38383a"  # THEME: dunst_bg_critical
+    foreground = "#ffffff"  # THEME: dunst_fg_critical
+    frame_color = "#38383a"  # THEME: dunst_frame_critical
     timeout = 30
-    highlight = "#60a5eb"  # THEME: dunst_highlight_critical
+    highlight = "#e9e9e9"  # THEME: dunst_highlight_critical

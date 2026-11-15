@@ -1,0 +1,10 @@
+[Icon Theme]
+Name=FusCollection
+Comment=Fus Custom Icon Collection
+Directories=96x96
+
+[96x96]
+Size=96
+Type=Scalable
+MinSize=16
+MaxSize=512

@@ -102,6 +102,10 @@ bspc config focus_follows_pointer true
 # Allow dragging/moving tiled windows across nodes
 bspc config pointer_motion_interval 17
 
+# Run OpenTabletDriver deamon
+
+pgrep -x OpenTabletDrive > /dev/null    || /usr/local/bin/otd-daemon &
+
 # Wallpaper and status bar
 $DOT_CONF/bspwm/scripts/Service-Polybar &
 $DOT_CONF/bspwm/scripts/Service-Background &

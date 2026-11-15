@@ -46,6 +46,10 @@ fi
 
 
 # esp-idf ######################################################
+if [ -d /home/fus/.fus/esp ]; then 
+    export IDF_PATH=/home/fus/.fus/esp
+fi
+
 if [ -e /home/fus/.fus/esp/export.sh ]; then 
     alias esp-idf='. /home/fus/.fus/esp/export.sh'
     alias esp-idf-build='idf.py build'

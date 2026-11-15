@@ -66,16 +66,17 @@ EventGroup_Battery() {
     # Args:
     #   $1 <---- handler.sh/$2
     #   $2 <---- handler.sh/$3
+
+    FILE_BATTERY_LOG="/tmp/.BatteryChargeMonitor/run.log"
+    FILE_BATTERY_SRV="/home/fus/.config/bspwm/scripts/Helper-BatteryMonitor"
+    $FILE_BATTERY_SRV "$1" "$2" "$3" >> ${FILE_BATTERY_LOG}
+
     case "$1" in
         PNP0C0A:00)
             case "$2" in
                 00000080) # Update every capacity of battery changed
-                    # Ignore for now
-                    # send_notification "Battery" "State changed to 00000080."
                     ;;
                 00000081) # Upadte every AC status changed
-                    # Ignore for now
-                    # send_notification "Battery" "State changed to 00000081."
                     ;;
                 *)
                     ;;
@@ -131,7 +132,8 @@ EventGroup_WMI() {
 
 case "$1" in
     wmi)
-        EventGroup_WMI "$2" "$3" "$4"
+        # send_debug_notification "$1" "$2" "$3" "$4" "$5" "$6"
+        # EventGroup_WMI "$2" "$3" "$4"
         ;;
     battery)
         # send_debug_notification "$1" "$2" "$3" "$4" "$5" "$6"

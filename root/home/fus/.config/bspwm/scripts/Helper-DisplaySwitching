@@ -15,6 +15,7 @@
 # DISP/0/Refresh=60
 # DISP/0/Primary=4
 # ...
+# PROFILE/0/DESC
 # PROFILE/0/DISP/NUM=2
 # PROFILE/0/DISP/0/PosX=0
 # PROFILE/0/DISP/0/PosY=1920
@@ -69,16 +70,19 @@ DISP/3/Height=1080
 DISP/3/Refresh=60
 DISP/3/Primary=1
 # Profile infomations 
+PROFILE/0/DESC="Builtin+HDMI"
 PROFILE/0/DISP/NUM=2          # Profile 0: For two monitors; HDMI-1/wxh/0x0; eDP-1/wxh/0x1920
 PROFILE/0/DISP/0/PosX=0       # Leave this blank if not used/undetected
 PROFILE/0/DISP/0/PosY=1920    # Leave this blank if not used/undetected
 PROFILE/0/DISP/3/PosX=0       # Leave this blank if not used/undetected
 PROFILE/0/DISP/3/PosY=0       # Leave this blank if not used/undetected
+PROFILE/1/DESC="DP2+HDMI"
 PROFILE/1/DISP/NUM=2          # Profile 1: For two monitors; HDMI-1/wxh/0x0; DP-2/wxh/1080x0
 PROFILE/1/DISP/2/PosX=1080    # Leave this blank if not used/undetected
 PROFILE/1/DISP/2/PosY=0       # Leave this blank if not used/undetected
 PROFILE/1/DISP/3/PosX=0       # Leave this blank if not used/undetected
 PROFILE/1/DISP/3/PosY=0       # Leave this blank if not used/undetected
+PROFILE/2/DESC="Builtin+DP2+HDMI"
 PROFILE/2/DISP/NUM=3          # Profile 2: For three monitors
 PROFILE/2/DISP/0/PosX=0       # Leave this blank if not used/undetected
 PROFILE/2/DISP/0/PosY=1920    # Leave this blank if not used/undetected
@@ -454,11 +458,14 @@ check_profile_matches_hardware() {
 # so xrandr --pos <X>x<Y> uses --pos ${py}x${px}
 apply_extend_profile() {
     local prof_id="$1"
+    local prof_desc=$(ReadConfig "PROFILE/$prof_id/DESC" 2>/dev/null)
 
     if ! check_profile_matches_hardware "$prof_id"; then
         apply_pc_only
+        local err_title="Display: Profile $prof_id Failed"
+        [[ -n "$prof_desc" ]] && err_title="Display: Profile $prof_id ($prof_desc) Failed"
         notify-send -u critical -i preferences-desktop-display \
-            "Display: Profile $prof_id Failed" \
+            "$err_title" \
             "Config mismatch or display unplugged. Reverted to PC mode."
         return 1
     fi
@@ -501,16 +508,20 @@ apply_extend_profile() {
     eval "$cmd" || {
         log_debug "Extend Profile $prof_id xrandr FAILED!"
         apply_pc_only
+        local err_title="Display: Profile $prof_id Error"
+        [[ -n "$prof_desc" ]] && err_title="Display: Profile $prof_id ($prof_desc) Error"
         notify-send -u critical -i preferences-desktop-display \
-            "Display: Profile $prof_id Error" "xrandr failed. Reverted to PC mode."
+            "$err_title" "xrandr failed. Reverted to PC mode."
         return 1
     }
     log_debug "Extend Profile $prof_id applied successfully"
 
     WriteConfig "DISP/MODE" "2"
     WriteConfig "DISP/PROFILE" "$prof_id"
+    local notif_title="Display: Extend | Profile $prof_id"
+    [[ -n "$prof_desc" ]] && notif_title="Display: Extend | Profile $prof_id ($prof_desc)"
     notify-send -u normal -i preferences-desktop-display \
-        "Display: Extend | Profile $prof_id" \
+        "$notif_title" \
         "Primary: $pri_out\nConfig: $PROJECT_MODE"
 }
 
@@ -676,7 +687,14 @@ case "$MAIN_CHOICE" in
             lines_in_item=$(( 1 + ${#prof_disps[@]} ))
             (( lines_in_item > MAX_EH )) && MAX_EH=$lines_in_item
 
-            entry_text="Profile ${p}"
+            local desc=$(ReadConfig "PROFILE/$p/DESC" 2>/dev/null)
+            if [[ -n "$desc" ]]; then
+                entry_text="Profile ${p} (${desc})"
+            else
+                entry_text="Profile ${p}"
+            fi
+            (( ${#entry_text} > MAX_CHARS )) && MAX_CHARS=${#entry_text}
+
             for d in "${prof_disps[@]}"; do
                 lbl="${DISP_LABEL[$d]:-DISP-$d}"
                 w="${DISP_W[$d]:-auto}"

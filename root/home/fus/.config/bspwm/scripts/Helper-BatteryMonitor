@@ -1,0 +1,414 @@
+#!/bin/zsh 
+
+# MANUAL CONFIG ####################################################################################################################
+
+# 1: Enable log (write to run.log / terminal), 0: Disable log completely
+ENABLE_LOG=0
+
+TARGET_USER="fus"
+TARGET_UID=$(id -u "$TARGET_USER" 2>/dev/null || echo 1000)
+
+BAT="BAT1"
+PD0="ucsi-source-psy-USBC000:001"
+PD1="ucsi-source-psy-USBC000:002"
+AC_MAIN="ACAD"
+
+PARENT_PASSED_ARG1=$1
+PARENT_PASSED_ARG2=$2
+PARENT_PASSED_ARG3=$3
+
+CODE_CAP_LEVEL_CHANGED="00000080"
+CODE_AC_STATUS_CHANGED="00000081"
+
+THRES_BAT_PCT_GOOD=100
+THRES_BAT_PCT_HALF=50
+THRES_BAT_PCT_QUARTER=25
+THRES_BAT_PCT_WARNING=15
+THRES_BAT_PCT_CRITICAL=10
+THRES_BAT_PCT_EMERGENCY=5
+
+DIR_BATTERY_CHARGE_MONITOR="/tmp/.BatteryChargeMonitor"
+FILE_LOCK="$DIR_BATTERY_CHARGE_MONITOR/lock"
+FILE_LAST_BATTERY_LEVEL="$DIR_BATTERY_CHARGE_MONITOR/bat.level.txt"
+FILE_LAST_BATTERY_TIER="$DIR_BATTERY_CHARGE_MONITOR/bat.tier.txt"
+FILE_LAST_ADAPTER_1_STATUS="$DIR_BATTERY_CHARGE_MONITOR/ac.1.power.txt"
+FILE_LAST_ADAPTER_2_STATUS="$DIR_BATTERY_CHARGE_MONITOR/ac.2.power.txt"
+FILE_LAST_AC_STATUS="$DIR_BATTERY_CHARGE_MONITOR/ac.online.txt"
+
+# LOGGING SETUP ####################################################################################################################
+
+log_msg() {
+    (( ENABLE_LOG )) && echo "$@"
+}
+
+if (( ! ENABLE_LOG )); then
+    exec 1>/dev/null
+fi
+
+# DEBUG ############################################################################################################################
+
+log_msg ""
+log_msg "###### $(date +"%D %T") ######"
+log_msg "PARENT_PASSED_ARG0 = $0"
+log_msg "PARENT_PASSED_ARG1 = $PARENT_PASSED_ARG1"
+log_msg "PARENT_PASSED_ARG2 = $PARENT_PASSED_ARG2"
+log_msg "PARENT_PASSED_ARG3 = $PARENT_PASSED_ARG3"
+
+# LOCKING ##########################################################################################################################
+
+[[ -d $DIR_BATTERY_CHARGE_MONITOR ]] || mkdir -p "$DIR_BATTERY_CHARGE_MONITOR"
+
+exec 9>"$FILE_LOCK"
+flock -w 4 9 || exit 0
+
+# READ SAVED STAT ##################################################################################################################
+
+last_battery_level=0
+last_battery_tier=0
+last_adapter_1_status=0
+last_adapter_2_status=0
+last_ac_online=0
+
+[[ -f $FILE_LAST_BATTERY_LEVEL ]] && last_battery_level=$(< "$FILE_LAST_BATTERY_LEVEL")
+[[ -f $FILE_LAST_BATTERY_TIER ]] && last_battery_tier=$(< "$FILE_LAST_BATTERY_TIER")
+[[ -f $FILE_LAST_ADAPTER_1_STATUS ]] && last_adapter_1_status=$(< "$FILE_LAST_ADAPTER_1_STATUS")
+[[ -f $FILE_LAST_ADAPTER_2_STATUS ]] && last_adapter_2_status=$(< "$FILE_LAST_ADAPTER_2_STATUS")
+[[ -f $FILE_LAST_AC_STATUS ]] && last_ac_online=$(< "$FILE_LAST_AC_STATUS")
+
+# HELPERS ##########################################################################################################################
+
+read_sysfs() {
+    local file="/sys/class/power_supply/$1/$2"
+    if [[ -f "$file" ]]; then
+        cat "$file" 2>/dev/null || echo 0
+    else
+        echo 0
+    fi
+}
+
+prv_calc_power() {
+    local volt=$1
+    local curr=$2
+    # convert to mili-watt
+    echo $(( (volt / 1000) * (curr / 1000) / 1000 ))
+}
+
+prv_get_dbus_address() {
+    local target_pid
+    target_pid=$(pgrep -u "$TARGET_UID" -x bspwm | head -n 1)
+    if [[ -z "$target_pid" ]]; then
+        target_pid=$(pgrep -u "$TARGET_UID" -x dunst | head -n 1)
+    fi
+
+    if [[ -n "$target_pid" ]]; then
+        cat "/proc/$target_pid/environ" 2>/dev/null | tr '\0' '\n' | grep '^DBUS_SESSION_BUS_ADDRESS=' | cut -d= -f2-
+    fi
+}
+
+send_notification() {
+    [[ -z "$TARGET_UID" ]] && return 1
+
+    local dbus_addr
+    dbus_addr=$(prv_get_dbus_address)
+    [[ -z "$dbus_addr" ]] && return 1
+
+    sudo -u "$TARGET_USER" \
+        DISPLAY=:0 \
+        DBUS_SESSION_BUS_ADDRESS="$dbus_addr" \
+        notify-send "$@"
+}
+
+send_debug_notification() {
+    send_notification "ACPI Event (Debug)" "Args: \$1=\"$1\" / \$2=\"$2\" / \$3=\"$3\" / \$4=\"$4\" \$5=\"$5\" \$6=\"$6\""
+}
+
+# GET CHARGE/DISCHARGE INFO ########################################################################################################
+
+battery_percent=$(read_sysfs "$BAT" "capacity")
+bat_status=$(read_sysfs "$BAT" "status")
+
+curr_charge_pd1=$(read_sysfs "$PD0" "current_now")
+curr_charge_pd2=$(read_sysfs "$PD1" "current_now")
+curr_charge_bat=$(read_sysfs "$BAT" "current_now")
+
+volt_charge_pd1=$(read_sysfs "$PD0" "voltage_now")
+volt_charge_pd2=$(read_sysfs "$PD1" "voltage_now")
+volt_charge_bat=$(read_sysfs "$BAT" "voltage_now")
+
+charge_full_bat=$(read_sysfs "$BAT" "charge_full")
+charge_now_bat=$(read_sysfs "$BAT" "charge_now")
+acad_online=$(read_sysfs "$AC_MAIN" "online")
+
+# ESTIMATE TIME ####################################################################################################################
+
+estimation_full="Unknown"
+estimation_empty="Unknown"
+
+if (( curr_charge_bat > 0 )); then
+    full_min=$(( (charge_full_bat - charge_now_bat) * 60 / curr_charge_bat ))
+    if (( full_min >= 0 )); then
+        estimation_full=$(printf "%dh%02dm" $((full_min / 60)) $((full_min % 60)))
+    fi
+    empty_min=$(( charge_now_bat * 60 / curr_charge_bat ))
+    if (( empty_min >= 0 )); then
+        estimation_empty=$(printf "%dh%02dm" $((empty_min / 60)) $((empty_min % 60)))
+    fi
+fi
+
+# CALC POWER #######################################################################################################################
+
+pwr_charge_pd1_miliwat=$(prv_calc_power $volt_charge_pd1 $curr_charge_pd1)
+pwr_charge_pd2_miliwat=$(prv_calc_power $volt_charge_pd2 $curr_charge_pd2)
+pwr_charge_bat_miliwat=$(prv_calc_power $volt_charge_bat $curr_charge_bat)
+
+pwr_charge_pd1_wat=$(printf "%.1f" $(( pwr_charge_pd1_miliwat / 1000.0 )))
+pwr_charge_pd2_wat=$(printf "%.1f" $(( pwr_charge_pd2_miliwat / 1000.0 )))
+pwr_charge_bat_wat=$(printf "%.1f" $(( pwr_charge_bat_miliwat / 1000.0 )))
+
+# DEBUG ############################################################################################################################
+
+log_msg ""
+log_msg "battery_percent=$battery_percent"
+log_msg ""
+log_msg "curr_charge_pd1=$curr_charge_pd1"
+log_msg "volt_charge_pd1=$volt_charge_pd1"
+log_msg "pd1/pwr=${pwr_charge_pd1_miliwat}"
+log_msg ""
+log_msg "curr_charge_pd2=$curr_charge_pd2"
+log_msg "volt_charge_pd2=$volt_charge_pd2"
+log_msg "pd2/pwr=${pwr_charge_pd2_miliwat}"
+log_msg ""
+log_msg "curr_charge_bat=$curr_charge_bat"
+log_msg "volt_charge_bat=$volt_charge_bat"
+log_msg "bat/pwr=${pwr_charge_bat_miliwat}"
+log_msg ""
+
+# DETERMINE STATE ##################################################################################################################
+
+current_ac_online=0
+if (( acad_online == 1 || pwr_charge_pd1_miliwat > 0 || pwr_charge_pd2_miliwat > 0 )) || [[ "$bat_status" == "Charging" ]]; then
+    current_ac_online=1
+fi
+
+# 0 : nope, 1 : plugged, 2 : unplugged
+ac_stat_change=0
+if (( current_ac_online != last_ac_online )); then
+    if (( current_ac_online == 1 )); then
+        ac_stat_change=1
+    else
+        ac_stat_change=2
+    fi
+fi
+
+# 1 : powered, 2 : discharging
+battery_stat=2
+if (( current_ac_online == 1 )) || [[ "$bat_status" == "Charging" || "$bat_status" == "Full" ]]; then
+    battery_stat=1
+fi
+
+if (( battery_stat == 1 )); then
+    log_msg "CURRENT: CHARGING"
+    if (( last_ac_online == 1 )); then
+        log_msg "LAST: CHARGING"
+    else
+        log_msg "LAST: DISCHARGING"
+    fi
+else
+    log_msg "CURRENT: DISCHARGING"
+    if (( last_ac_online == 1 )); then
+        log_msg "LAST: CHARGING"
+    else
+        log_msg "LAST: DISCHARGING"
+    fi
+fi
+
+# CATEGORIZE BATTERY LEVEL #########################################################################################################
+
+BATTERY_GOOD=7
+BATTERY_HALF=6
+BATTERY_QUARTER=5
+BATTERY_WARNING=4
+BATTERY_CRITICAL=3
+BATTERY_EMERGENCY=2
+
+# 0 : Default value
+# 7 | <=100 : Good
+# 6 | <=50  : Half
+# 5 | <=25  : Quarter
+# 4 | <=15  : Warning
+# 3 | <=10  : Critical
+# 2 | <=05  : Emergency
+# 1 | ----  | Unknown
+battery_level_stat=0
+if   (( battery_percent <= THRES_BAT_PCT_EMERGENCY )); then
+    battery_level_stat=$BATTERY_EMERGENCY
+elif (( battery_percent <= THRES_BAT_PCT_CRITICAL )); then
+    battery_level_stat=$BATTERY_CRITICAL
+elif (( battery_percent <= THRES_BAT_PCT_WARNING )); then
+    battery_level_stat=$BATTERY_WARNING
+elif (( battery_percent <= THRES_BAT_PCT_QUARTER )); then
+    battery_level_stat=$BATTERY_QUARTER
+elif (( battery_percent <= THRES_BAT_PCT_HALF )); then
+    battery_level_stat=$BATTERY_HALF
+elif (( battery_percent <= THRES_BAT_PCT_GOOD )); then
+    battery_level_stat=$BATTERY_GOOD
+else
+    battery_level_stat=1
+fi
+
+log_msg "DEBUG: $battery_level_stat"
+
+# DETERMINE TO SHOW NOTI ###########################################################################################################
+
+# 0 : false, 1 : true
+hide_battery_noti=0
+
+case $battery_level_stat in 
+    $BATTERY_GOOD)      hide_battery_noti=1;;
+    $BATTERY_HALF)      hide_battery_noti=1;;
+    $BATTERY_QUARTER)   hide_battery_noti=0;;
+    $BATTERY_WARNING)   hide_battery_noti=0;;
+    $BATTERY_CRITICAL)  hide_battery_noti=0;;
+    $BATTERY_EMERGENCY) hide_battery_noti=0;;
+esac
+
+forced_show_noti=0
+
+should_notify=0
+if (( forced_show_noti == 1 )); then
+    should_notify=1
+elif (( ac_stat_change != 0 )); then
+    should_notify=1
+elif (( hide_battery_noti == 0 && battery_stat == 2 )); then
+    should_notify=1
+    # Anti-spam: Only notify when transitioning to a new (lower) tier
+    # if (( battery_level_stat != last_battery_tier )); then
+    #     should_notify=1
+    # fi
+fi
+
+# SAVE CURRENT STAT ################################################################################################################
+
+echo "$battery_percent"         > "$FILE_LAST_BATTERY_LEVEL"
+echo "$battery_level_stat"      > "$FILE_LAST_BATTERY_TIER"
+echo "$pwr_charge_pd1_miliwat"  > "$FILE_LAST_ADAPTER_1_STATUS"
+echo "$pwr_charge_pd2_miliwat"  > "$FILE_LAST_ADAPTER_2_STATUS"
+echo "$current_ac_online"       > "$FILE_LAST_AC_STATUS"
+
+if (( should_notify == 0 )); then
+    log_msg "SKIPPED SHOW NOTIFICATION"
+    exit 0
+fi
+
+# GENERATE NOTI ####################################################################################################################
+
+noti_title_str="Battery"
+noti_body_str=""
+noti_urgency="normal"
+noti_icon="mood-happy"
+
+if (( ac_stat_change == 1 )); then # Plugged 
+    noti_icon="plug"
+    noti_title_str="Adapter plugged"
+    if (( pwr_charge_pd2_miliwat > 0 )); then
+        noti_body_str="Adapter PD2 ${pwr_charge_pd2_wat}(W). ${battery_percent}% @ +${pwr_charge_bat_wat}(W)."
+    elif (( pwr_charge_pd1_miliwat > 0 )); then
+        noti_body_str="Adapter PD1 ${pwr_charge_pd1_wat}(W). ${battery_percent}% @ +${pwr_charge_bat_wat}(W)."
+    else
+        noti_body_str="AC Adapter. ${battery_percent}% @ +${pwr_charge_bat_wat}(W)."
+    fi
+elif (( ac_stat_change == 2 )); then # Unplugged
+    noti_icon="plug-x"
+    noti_title_str="Adapter unplugged"
+    noti_body_str="${battery_percent}% @ -${pwr_charge_bat_wat}(W)."
+else # no changed
+    noti_icon="mood-happy"
+    noti_title_str="Battery status"
+    if (( battery_stat == 1 )); then # AC powered
+        case "$battery_level_stat" in
+            "$BATTERY_GOOD")
+                noti_title_str="Battery Status"
+                noti_msg="${battery_percent}% @ +${pwr_charge_bat_wat}(W). Good condition."
+                ;;
+            "$BATTERY_HALF")
+                noti_title_str="Battery Status"
+                noti_msg="${battery_percent}% @ +${pwr_charge_bat_wat}(W)."
+                ;;
+            "$BATTERY_QUARTER")
+                noti_icon="mood-annoyed"
+                noti_urgency="normal"
+                noti_title_str="Battery Low"
+                noti_msg="${battery_percent}% @ +${pwr_charge_bat_wat}(W)."
+                ;;
+            "$BATTERY_WARNING")
+                noti_icon="mood-silence"
+                noti_urgency="normal"
+                noti_title_str="Battery Very Low"
+                noti_msg="${battery_percent}% @ +${pwr_charge_bat_wat}(W). Keep charging!"
+                ;;
+            "$BATTERY_CRITICAL")
+                noti_icon="mood-angry"
+                noti_urgency="critical"
+                noti_title_str="Battery Critically Low"
+                noti_msg="${battery_percent}% @ +${pwr_charge_bat_wat}(W). Do not unplug the charger!"
+                ;;
+            "$BATTERY_EMERGENCY")
+                noti_icon="mood-sad-dizzy"
+                noti_urgency="critical"
+                noti_title_str="Battery In Emergency"
+                noti_msg="${battery_percent}% @ +${pwr_charge_bat_wat}(W). Do not unplug the charger!"
+                ;;
+            *)
+                noti_title_str="ACPI | Battery Status"
+                noti_msg="${battery_percent}% @ +${pwr_charge_bat_wat}(W). Unknown state!"
+                ;;
+        esac
+        noti_body_str="${noti_msg} ECT ${estimation_full} to full."
+    elif (( battery_stat == 2 )); then # Discharging
+        case "$battery_level_stat" in
+            "$BATTERY_GOOD")
+                noti_title_str="ACPI | Battery Status"
+                noti_msg="${battery_percent}% @ -${pwr_charge_bat_wat}(W). Good condition."
+                ;;
+            "$BATTERY_HALF")
+                noti_title_str="Battery Status"
+                noti_msg="${battery_percent}% @ -${pwr_charge_bat_wat}(W)."
+                ;;
+            "$BATTERY_QUARTER")
+                noti_icon="mood-annoyed"
+                noti_urgency="low"
+                noti_title_str="Battery Low"
+                noti_msg="${battery_percent}% @ -${pwr_charge_bat_wat}(W). Please connect charger!"
+                ;;
+            "$BATTERY_WARNING")
+                noti_icon="alert-octagon"
+                noti_urgency="low"
+                noti_title_str="Battery Very Low"
+                noti_msg="${battery_percent}% @ -${pwr_charge_bat_wat}(W). Please connect charger soon!"
+                ;;
+            "$BATTERY_CRITICAL")
+                noti_icon="alert-octagon-red"
+                noti_urgency="critical"
+                noti_title_str="Battery Critically Low"
+                noti_msg="${battery_percent}% @ -${pwr_charge_bat_wat}(W). Connect charger immediately!"
+                ;;
+            "$BATTERY_EMERGENCY")
+                noti_icon="alert-octagon-red"
+                noti_urgency="critical"
+                noti_title_str="ACPI | Emergency Battery"
+                noti_msg="${battery_percent}% @ -${pwr_charge_bat_wat}(W). Connect charger immediately! System may shut down!"
+                ;;
+            *)
+                noti_title_str="ACPI | Battery Status"
+                noti_msg="${battery_percent}% @ -${pwr_charge_bat_wat}(W). Unknown state!"
+                ;;
+        esac
+        noti_body_str="${noti_msg} ECT ${estimation_empty} to shutdown."
+    fi
+fi
+
+# CALL DUNST TO SHOW NOTI ##########################################################################################################
+
+send_notification "$noti_title_str" "$noti_body_str" --urgency="$noti_urgency" --icon="$noti_icon"
+
+# EOF ##############################################################################################################################
